@@ -28,7 +28,7 @@ class GCloudService {
     const payload = {
       model_filename: modelFileName,
       project_id: projectId.toString(),
-      cb_url: ML_CALLBACK_BASE + '/trait-prediction',
+      cb_url: 'https://hunchgenaitest-320866101884.us-central1.run.app/trait-prediction',
       type: type,
       data: rawResults,
     };
@@ -51,16 +51,13 @@ console.log('payload',payload)
 					).origin,
 				},
 			},
-			scheduleTime: {
-				seconds: Math.floor(Date.now() / 1000),
-			},
 		};
-console.log('task',task)
+// console.log('task',task)
     const request = { parent, task };
     const [response] = await this.tasksClient.createTask(request);
-    console.log(request)
+    // console.log(request)
     console.log('================================')
-    console.log(response)
+    // console.log(response)
     return response;
   }
 

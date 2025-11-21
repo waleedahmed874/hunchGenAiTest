@@ -5,7 +5,7 @@ const { initialReactions, contextPrompts } = require('./reaction');
 const GCloudService = require('./gcloudService');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.SERVER_PORT;
 const gcloudService = new GCloudService();
 
 // Middleware to parse JSON bodies
@@ -198,5 +198,5 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:3000`);
+  console.log(`Server is running on ${PORT}`);
 });

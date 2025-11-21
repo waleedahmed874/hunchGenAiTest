@@ -5,7 +5,7 @@ const { initialReactions, contextPrompts } = require('./reaction');
 const GCloudService = require('./gcloudService');
 
 const app = express();
-const PORT = process.env.SERVER_PORT;
+const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
 
 // Middleware to parse JSON bodies

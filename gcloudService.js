@@ -55,9 +55,11 @@ console.log('payload',payload)
 // console.log('task',task)
     const request = { parent, task };
     const [response] = await this.tasksClient.createTask(request);
+    console.log('===============request=================')
+
     // console.log(request)
-    console.log('================================')
-    // console.log(response)
+    console.log('===============response=================')
+    console.log(response)
     return response;
   }
 

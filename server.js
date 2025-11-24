@@ -74,13 +74,13 @@ app.get('/api/traits/initial-reaction', (req, res) => {
 app.post('/api/traits/process', async (req, res) => {
   try {
     // Prepare context prompt results
-    const contextPromptResultsToPost = contextPrompts.filter(prompt => prompt.contextPromptEnabled===true).map((prompt) => ({
+    const contextPromptResultsToPost = contextPrompts.map((prompt) => ({
       ID: prompt.id,
       comment: gcloudService.cleanText(prompt.text),
     }));
 
     // Prepare initial reaction results
-    const resultsToPost = initialReactions.filter(reaction => reaction.initialReactionEnabled===true)
+    const resultsToPost = initialReactions
       .map((reaction) => ({
         ID:reaction.id,
         comment: gcloudService.cleanText(reaction.text),
@@ -91,7 +91,7 @@ app.post('/api/traits/process', async (req, res) => {
    
 
     // Queue tasks for context prompt enabled traits
-    for (const model of traits) {
+    for (const model of traits.filter(trait => trait.contextPromptEnabled)) {
       try {
         if (model.gcsFileName && contextPromptResultsToPost && projectId && model.contextPromptEnabled) {
           const response = await gcloudService.queueTraitTasks(
@@ -108,7 +108,7 @@ app.post('/api/traits/process', async (req, res) => {
     }
 
     // Queue tasks for initial reaction enabled traits
-    for (const model of traits) {
+    for (const model of traits.filter(trait => trait.initialReactionEnabled)) {
       try {
         if (model.initialReactionEnabled && model.gcsFileName && resultsToPost && projectId) {
           const response = await gcloudService.queueTraitTasks(

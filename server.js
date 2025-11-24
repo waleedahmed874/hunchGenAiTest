@@ -1,8 +1,10 @@
 require('dotenv').config();
 const express = require('express');
+const database = require('./db');
 const { traits } = require('./traits');
 const { initialReactions, contextPrompts } = require('./reaction');
 const GCloudService = require('./gcloudService');
+const Trait = require('./models/Trait');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -73,8 +75,8 @@ app.post('/api/traits/process', async (req, res) => {
   try {
     // Prepare context prompt results
     const contextPromptResultsToPost = contextPrompts.map((prompt) => ({
-      ID: generateObjectId(),
-      comment: gcloudService.cleanText(prompt),
+      ID: prompt.id,
+      comment: gcloudService.cleanText(prompt.text),
     }));
 
     // Prepare initial reaction results
@@ -149,15 +151,105 @@ app.post('/trait-prediction', async (req, res) => {
     console.log('Type:', type);
     console.log('================================');
 
+    // Validate required fields
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data must be a valid array'
+      });
+    }
+
+    if (!model_filename || !type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Model filename and type are required'
+      });
+    }
+
+    // Find trait from traits.js by matching gcsFileName with model_filename
+    const matchedTrait = traits.find(trait => trait.gcsFileName === model_filename);
+    if (!matchedTrait) {
+      console.warn(`Trait not found for model filename: ${model_filename}`);
+    }
+
+    const traitTitle = matchedTrait ? matchedTrait.title : null;
+
+    // Get the appropriate reactions array based on type
+    const reactionsArray = type === 'INITIAL_REACTION' ? initialReactions : contextPrompts;
+
+    // Process each data item
+    const savedTraits = [];
+    const errors = [];
+    const processedIds = new Set(); // Track processed IDs to avoid duplicates in response
+
+    for (const item of data) {
+      try {
+        const { ID, commentPrediction } = item;
+
+        if (!ID) {
+          errors.push({ item, error: 'ID is missing' });
+          continue;
+        }
+
+        // Find matching text from reaction.js by ID
+        const matchedReaction = reactionsArray.find(reaction => reaction.id === ID);
+        
+        if (!matchedReaction) {
+          errors.push({ item, error: `Reaction not found for ID: ${ID}` });
+          continue;
+        }
+
+        const text = matchedReaction.text;
+
+        // Find or create Trait document using upsert (unique by text + type)
+        let traitDoc = await Trait.findOne({ text, type });
+
+        if (!traitDoc) {
+          // Create new document if it doesn't exist
+          traitDoc = new Trait({
+            text,
+            type,
+            traits: []
+          });
+        }
+
+        // Add trait to array if commentPrediction is 1 and trait title exists
+        if (commentPrediction === 1 && traitTitle) {
+          // Add trait only if it doesn't already exist (avoid duplicates)
+          if (!traitDoc.traits.includes(traitTitle)) {
+            traitDoc.traits.push(traitTitle);
+          }
+        }
+
+        // Save the document
+        const savedTrait = await traitDoc.save();
+        
+        // Only add to savedTraits once per unique ID
+        if (!processedIds.has(ID)) {
+          savedTraits.push(savedTrait);
+          processedIds.add(ID);
+        }
+
+        console.log(`✅ Processed ID: ${ID}, commentPrediction: ${commentPrediction}, trait: ${commentPrediction === 1 && traitTitle ? traitTitle : 'none'}`);
+      } catch (itemError) {
+        console.error(`Error processing item ${item.ID}:`, itemError);
+        errors.push({ item, error: itemError.message });
+      }
+    }
+
     res.json({
       success: true,
-      message: 'Trait prediction callback received',
+      message: 'Trait prediction callback processed',
+      saved: savedTraits.length,
+      errors: errors.length,
       receivedData: {
-        dataCount: Array.isArray(data) ? data.length : 'N/A',
+        dataCount: data.length,
         model_filename,
         project_id,
-        type
-      }
+        type,
+        traitTitle
+      },
+      errors: errors.length > 0 ? errors : undefined
     });
   } catch (error) {
     console.error('Error handling trait prediction callback:', error);
@@ -196,7 +288,22 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on ${PORT}`);
-});
+// Start server with database connection
+async function startServer() {
+  try {
+    // Connect to MongoDB
+    await database.connect();
+    
+    // Start Express server
+    app.listen(PORT, () => {
+      console.log(`Server is running on ${PORT}`);
+      console.log(`Database status: ${database.getStatus()}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the application
+startServer();

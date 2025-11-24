@@ -81,7 +81,6 @@ app.post('/api/traits/process', async (req, res) => {
 
     // Prepare initial reaction results
     const resultsToPost = initialReactions
-      .filter(reaction => reaction) // Filter out null/undefined values
       .map((reaction) => ({
         ID:reaction.id,
         comment: gcloudService.cleanText(reaction.text),

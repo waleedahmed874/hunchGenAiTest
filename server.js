@@ -83,8 +83,8 @@ app.post('/api/traits/process', async (req, res) => {
     const resultsToPost = initialReactions
       .filter(reaction => reaction) // Filter out null/undefined values
       .map((reaction) => ({
-        ID: generateObjectId(),
-        comment: gcloudService.cleanText(reaction),
+        ID:reaction.id,
+        comment: gcloudService.cleanText(reaction.text),
       }));
 
     const projectId = "691f0de3cde91b17bbb84746";

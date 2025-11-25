@@ -29,7 +29,7 @@ class GenAiService {
         trait_examples: traitExamples,
         version
       };
-
+console.log('payload============================',payload)
       const response = await axios.post(this.apiUrl, payload, {
         headers: {
           'Content-Type': 'application/json'

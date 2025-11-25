@@ -8,6 +8,8 @@ const traits = [{
     "__v": 0,
     "color": "fixable",
     "title": "Niche (Prompted)",
+    "trait_definition": "Can be associated with FORESIGHT or NICHE and therefore could be personal or projective. Explicit mention of the product or concept being beneficial for someone with health conditions ",
+    "trait_examples": "Examples are the same as Niche Initial.",
     "traitType": "primary",
     "parentTraits": []
   },
@@ -21,6 +23,8 @@ const traits = [{
     "__v": 0,
     "color": "positive",
     "title": "Emotive Delight",
+    "trait_definition": "Emotive Delight is an explicit or implied presence of positive emotion such as anticipation, joy, happiness, excitement, relief, fondness, gratitude, etc. Relief, for example, is often expressed when someone believes the concept is solving a real problem they currently experience. Fondess is often expressed when someone relates to something familiar like the brand name (if a brand name is shown), the general product category, or any specific element. Their response can be any length, as long as indication of positive emotion is present. An exclamation point can often signal an emotive response such as \"This seems like it would feel amazing!\", but the presence of an exclamation point is not an automatic indicator. Someone simply using the word \"great\" or \"love\" does not automatically mean there is Emotive Delight. You should be able to sense emotion in what they say and how they say it. Emotive Delight and Foresight are often both present when someone is expressing positive emotion while also relating to the concept with in a personal way and envisioning how it would play a role in making life easier, better, or helping them feel more special.  ",
+      "trait_examples": "\"I think this idea is genius!\"\n\"It sounds good to me! It would solve a big problem!\"\n\"Looks yummy I love nut butter\"\n\"Of course it appeals to me. Don't see a downside!\"\n\"Citrus. Spice. What's not to like!?!?\"\n\"Yummy!\"\n\"I think it's a superb idea and I'd love to try them both.\"\n\"I think this an absolutely genius idea! I love everything about it. The versatility would be something everyone could use.\"",
     "traitType": "primary",
     "parentTraits": []
   },
@@ -34,6 +38,8 @@ const traits = [{
     "__v": 0,
     "color": "positive",
     "title": "Foresight",
+    "trait_definition": "Foresight is when someone immediately envisions life situations where this concept will make life better, easier, or more special in some way. The primary indicator of Foresight in one's Initial Reaction is when they don't just tell us their thoughts about the concept or give feedback about it's success potential, but they go on to use their own words to describe who, what, when, how, or why a concept can help them or someone else. The vibe of Foresight should be positive, but does not have to be emotive. In the Initial Reaction, we are not asking participants to tell us \"why\" or \"who\" or \"when\" yet - we've only asked what they think about the idea. Another clear indication of Foresight is when someone says they would or would want to try, buy or use the concept.\n\nThere can also be implied Foresight when there is indication that someone is relating to the concept in a personal way beyond simply giving feedback.The vibe of personal relatability can be subtle, and can be expressed in hindsight or have a futuristic tone. Recollections of previous situations or life moments are often in expressed in hindsight. For example, \"Yes, my dog seems to slow down on long hikes or tire easily\". Foresight can also have a projective rather than personal tone, where they are stating who or when someone else would like, need, use, or benefit from the concept.  \n\nIn summary, for Foresight to be present one of three things should be present - 1) explicit situational who/what/when/where/why context given, and/or 2) expressed interest in or intent to try, use or buy such as \"I would like to try this\", and/or 3) indication of implied relatability beyond someone simply showing that they understand the gist of the concept. \n\nForesight is not present if someone is simply complimenting or restating an explicit element or benefit described in the concept (this would be an \"Intuitive\" vibe only). ",
+  "trait_examples": "\"I think this is a good idea. I like frozen desserts, so this is something I would try. I like the idea of ice cream with a cookie in shape of a candy bar. It's almost like three in one.\"\n\"I love it. One of the biggest things is it prevents eye fatigue which I have a big problem of already so I love that.\"\n\"It would appeal to my son.\"\n\"I think it's great it allows me to be my own boss and allows for various options on shipping that can best help me deliver my products fast and on time.\" \n\"I think that it\u2019s a great idea! I don\u2019t like anything too spicy, but my husband loves it!\"",
     "traitType": "primary",
     "parentTraits": []
   },
@@ -47,6 +53,8 @@ const traits = [{
     "__v": 0,
     "color": "neutral",
     "title": "Neutrality",
+    "trait_definition": "Neutrality is lack of any positive or negative tone or commentary. The context could range from a simple \"OK\" or \"fine,\" to expressed or implied ambivalence and indifference to an idea. \n",
+    "trait_examples": '',
     "traitType": "primary",
     "parentTraits": []
   },
@@ -62,6 +70,8 @@ const traits = [{
     "color": "positive",
     "title": "Positivity",
     "traitType": "primary",
+    "trait_definition": "The overall vibe is clearly positive or leans positive, or there is a positive tone present in part of the reaction even if something negative is also said. The context could be personal, projective, rational, or emotive, and could range from a simple \u201cyes\u201d or \"good\" to a matter-of-fact compliment or projection of success, to personal emotion being expressed. It's not uncommon for reactions with positivity present to also include some skeptical distraction, or to be polarized where somene is saying something both positive and negative within their whole reaction (e.g. \"I am leery about this because usually I call BS on anything with scent claiming to be all natural, but I really think these scents could work\").",
+    "trait_examples": "\"I would try it. I love Creme Brulee\"\n\"Sounds good, a little pricey\"\n\"I think it looks delicious.\"\n\"Yes, pets and carpet get messy.\"\n\"I think this is something I would buy!\"\n\"Yum\"\n\"It seems very unique and different\"\n\"It make me want to drink more coffee\"\n\"Nothing spectacular but straight to the point I liked it\" ",
     "parentTraits": []
   }
 ];

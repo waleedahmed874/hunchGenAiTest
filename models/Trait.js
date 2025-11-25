@@ -25,6 +25,39 @@ const traitSchema = new mongoose.Schema(
       type: [String],
       required: [true, 'Traits array is required'],
       default: []
+    },
+    genAiRecords: {
+      type: [{
+        llmScore: {
+          type: Number,
+          required: true
+        },
+        genAiSays: {
+          present: Boolean,
+          confidence: Number,
+          rationale: String,
+          score: Number
+        },
+        finalScore: {
+          type: Number,
+          required: true
+        },
+        action: {
+          type: String,
+          enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
+          required: true
+        },
+        traitTitle: String,
+        timestamp: {
+          type: Date,
+          default: Date.now
+        }
+      }],
+      default: []
+    },
+    reviewTags: {
+      type: [String],
+      default: []
     }
   },
   {

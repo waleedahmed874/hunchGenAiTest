@@ -5,6 +5,7 @@ const { traits } = require('./traits');
 const { initialReactions, contextPrompts } = require('./reaction');
 const GCloudService = require('./gcloudService');
 const Trait = require('./models/Trait');
+const genAiService = require('./services/genAiService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -169,9 +170,15 @@ app.post('/trait-prediction', async (req, res) => {
     const matchedTrait = traits.find(trait => trait.gcsFileName === model_filename);
     if (!matchedTrait) {
       console.warn(`Trait not found for model filename: ${model_filename}`);
+      return res.status(400).json({
+        success: false,
+        error: `Trait not found for model filename: ${model_filename}`
+      });
     }
 
-    const traitTitle = matchedTrait ? matchedTrait.title : null;
+    const traitTitle = matchedTrait.title;
+    const traitDefinition = matchedTrait.trait_definition || '';
+    const traitExamples = matchedTrait.trait_examples || '';
 
     // Get the appropriate reactions array based on type
     const reactionsArray = type === 'INITIAL_REACTION' ? initialReactions : contextPrompts;
@@ -199,6 +206,36 @@ app.post('/trait-prediction', async (req, res) => {
         }
 
         const text = matchedReaction.text;
+        const llmScore = commentPrediction; // 0 or 1
+
+        // Call GenAI API
+        console.log(`🔍 Calling GenAI for ID: ${ID}, trait: ${traitTitle}`);
+        const genAiResult = await genAiService.classify(
+          text,
+          traitTitle,
+          traitDefinition,
+          traitExamples,
+          'basic'
+        );
+
+        if (!genAiResult.success) {
+          console.error(`❌ GenAI API failed for ID: ${ID}`, genAiResult.error);
+          errors.push({ item, error: `GenAI API failed: ${genAiResult.error}` });
+          continue;
+        }
+
+        const genAiResponse = genAiResult.data;
+        const genAiScore = genAiResponse.present ? 1 : 0;
+
+        // Determine action based on LLM score and GenAI response
+        const actionResult = genAiService.determineAction(llmScore, genAiResponse);
+        const { action, finalScore } = actionResult;
+
+        // Check if human review is required
+        const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
+        if (needsReview) {
+          console.log(`⚠️ Human review required for ID: ${ID}`);
+        }
 
         // Find or create Trait document using upsert (unique by text + type)
         let traitDoc = await Trait.findOne({ text, type });
@@ -208,15 +245,48 @@ app.post('/trait-prediction', async (req, res) => {
           traitDoc = new Trait({
             text,
             type,
-            traits: []
+            traits: [],
+            genAiRecords: [],
+            reviewTags: []
           });
         }
 
-        // Add trait to array if commentPrediction is 1 and trait title exists
-        if (commentPrediction === 1 && traitTitle) {
-          // Add trait only if it doesn't already exist (avoid duplicates)
-          if (!traitDoc.traits.includes(traitTitle)) {
-            traitDoc.traits.push(traitTitle);
+        // Create GenAI record
+        const genAiRecord = {
+          llmScore,
+          genAiSays: {
+            present: genAiResponse.present,
+            confidence: genAiResponse.confidence,
+            rationale: genAiResponse.rationale,
+            score: genAiResponse.score
+          },
+          finalScore,
+          action,
+          traitTitle,
+          timestamp: new Date()
+        };
+
+        // Add GenAI record to document
+        traitDoc.genAiRecords.push(genAiRecord);
+
+        // Handle trait addition/removal based on final score
+        const hasTrait = traitDoc.traits.includes(traitTitle);
+
+        if (finalScore === 1 && !hasTrait) {
+          // Add trait if final score is 1 and trait not already present
+          traitDoc.traits.push(traitTitle);
+          console.log(`➕ Added trait "${traitTitle}" for ID: ${ID}`);
+        } else if (finalScore === 0 && hasTrait) {
+          // Remove trait if final score is 0 and trait is present
+          traitDoc.traits = traitDoc.traits.filter(t => t !== traitTitle);
+          console.log(`➖ Removed trait "${traitTitle}" for ID: ${ID}`);
+        }
+
+        // Add review tag if human review is required
+        if (needsReview) {
+          const reviewTag = `review_${traitTitle}_${Date.now()}`;
+          if (!traitDoc.reviewTags.includes(reviewTag)) {
+            traitDoc.reviewTags.push(reviewTag);
           }
         }
 
@@ -229,7 +299,7 @@ app.post('/trait-prediction', async (req, res) => {
           processedIds.add(ID);
         }
 
-        console.log(`✅ Processed ID: ${ID}, commentPrediction: ${commentPrediction}, trait: ${commentPrediction === 1 && traitTitle ? traitTitle : 'none'}`);
+        console.log(`✅ Processed ID: ${ID} | LLM: ${llmScore} | GenAI: ${genAiScore} | Final: ${finalScore} | Action: ${action}`);
       } catch (itemError) {
         console.error(`Error processing item ${item.ID}:`, itemError);
         errors.push({ item, error: itemError.message });

@@ -24,7 +24,7 @@ class GenAiService {
     try {
       const payload = {
         text,
-        trait_title: traitTitle,
+        trait: traitTitle,
         trait_definition: traitDefinition,
         trait_examples: traitExamples,
         version

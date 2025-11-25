@@ -284,7 +284,7 @@ app.post('/trait-prediction', async (req, res) => {
 
         // Add review tag if human review is required
         if (needsReview) {
-          const reviewTag = `review_${traitTitle}_${Date.now()}`;
+          const reviewTag = traitTitle;
           if (!traitDoc.reviewTags.includes(reviewTag)) {
             traitDoc.reviewTags.push(reviewTag);
           }

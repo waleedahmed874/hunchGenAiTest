@@ -57,25 +57,21 @@ console.log('payload============================',payload)
 
   /**
    * Determine if human review is required
+   * Human review is required ONLY when score is changing AND confidence < 0.90
    * @param {Object} genAiResponse - GenAI API response
    * @param {number} llmScore - Original LLM score (commentPrediction)
    * @returns {boolean} Whether human review is required
    */
   requiresReview(genAiResponse, llmScore) {
-    if (!genAiResponse || !genAiResponse.present) {
+    if (!genAiResponse || genAiResponse.present === undefined) {
       return false;
     }
 
     const { confidence, present } = genAiResponse;
     const genAiScore = present ? 1 : 0;
 
-    // Review required if confidence is below threshold
-    if (confidence < this.reviewThreshold) {
-      return true;
-    }
-
-    // Review required if GenAI changed the score
-    if (genAiScore !== llmScore) {
+    // Review required ONLY if score is changing AND confidence < 0.90
+    if (genAiScore !== llmScore && confidence < this.confidenceThreshold) {
       return true;
     }
 
@@ -84,23 +80,39 @@ console.log('payload============================',payload)
 
   /**
    * Determine the action based on LLM score and GenAI response
+   * Decision Matrix:
+   * - LLM Score = 1, GenAI Says = Yes (conf > 0.90) → Final Score = 1, Action = No change
+   * - LLM Score = 1, GenAI Says = No (conf > 0.90) → Final Score = 0, Action = Score removed
+   * - LLM Score = 0, GenAI Says = Yes (conf > 0.90) → Final Score = 1, Action = Score added
+   * - LLM Score = 0, GenAI Says = No → Final Score = 0, Action = No change
+   * - Score changing AND confidence < 0.90 → Final Score = Original, Action = Human review required
+   * 
    * @param {number} llmScore - Original LLM score (commentPrediction)
    * @param {Object} genAiResponse - GenAI API response
    * @returns {Object} Action details
    */
   determineAction(llmScore, genAiResponse) {
-    if (!genAiResponse || genAiResponse.success === false) {
+    if (!genAiResponse || genAiResponse.present === undefined) {
       return {
         action: 'No change',
         finalScore: llmScore,
-        reason: 'GenAI API failed'
+        reason: 'GenAI API failed or invalid response'
       };
     }
 
     const { present, confidence } = genAiResponse;
     const genAiScore = present ? 1 : 0;
 
-    // Skip if score > 0.90 AND present === true AND current commentPrediction === 1
+    // Check if human review is required (score changing AND confidence < 0.90)
+    if (this.requiresReview(genAiResponse, llmScore)) {
+      return {
+        action: 'Human review required',
+        finalScore: llmScore, // Keep original score until review
+        reason: 'Score change detected with low confidence (< 0.90)'
+      };
+    }
+
+    // LLM Score = 1, GenAI Says = Yes (conf > 0.90) → No change
     if (llmScore === 1 && present === true && confidence > this.confidenceThreshold) {
       return {
         action: 'No change',
@@ -109,16 +121,7 @@ console.log('payload============================',payload)
       };
     }
 
-    // If commentPrediction === 0 AND present === true AND confidence > 0.90: add trait
-    if (llmScore === 0 && present === true && confidence > this.confidenceThreshold) {
-      return {
-        action: 'Score added',
-        finalScore: 1,
-        reason: 'GenAI confirmed trait presence with high confidence'
-      };
-    }
-
-    // If commentPrediction === 1 AND present === false: remove trait
+    // LLM Score = 1, GenAI Says = No (conf > 0.90) → Score removed
     if (llmScore === 1 && present === false && confidence > this.confidenceThreshold) {
       return {
         action: 'Score removed',
@@ -127,16 +130,25 @@ console.log('payload============================',payload)
       };
     }
 
-    // If scores match but confidence is low, or if GenAI changed score
-    if (this.requiresReview(genAiResponse, llmScore)) {
+    // LLM Score = 0, GenAI Says = Yes (conf > 0.90) → Score added
+    if (llmScore === 0 && present === true && confidence > this.confidenceThreshold) {
       return {
-        action: 'Human review required',
-        finalScore: llmScore, // Keep original score until review
-        reason: 'Low confidence or score change detected'
+        action: 'Score added',
+        finalScore: 1,
+        reason: 'GenAI confirmed trait presence with high confidence'
       };
     }
 
-    // Default: no change
+    // LLM Score = 0, GenAI Says = No → No change
+    if (llmScore === 0 && present === false) {
+      return {
+        action: 'No change',
+        finalScore: 0,
+        reason: 'Both LLM and GenAI agree trait is not present'
+      };
+    }
+
+    // Default: no change (should not reach here, but safety fallback)
     return {
       action: 'No change',
       finalScore: llmScore,

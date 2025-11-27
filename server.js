@@ -521,7 +521,7 @@ async function startServer() {
     await database.connect();
     
     // Start Express server
-    app.listen(8080, () => {
+    app.listen(PORT, () => {
       console.log(`Server is running on ${PORT}`);
       console.log(`Database status: ${database.getStatus()}`);
     });

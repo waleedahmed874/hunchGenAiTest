@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const database = require('./db');
 const { traits } = require('./traits');
 const { initialReactions, contextPrompts } = require('./reaction');
@@ -10,6 +11,9 @@ const genAiService = require('./services/genAiService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
+
+// Enable CORS for all origins
+app.use(cors());
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -144,13 +148,6 @@ app.post('/trait-prediction', async (req, res) => {
   try {
     const { data, model_filename, project_id, type } = req.body;
     
-    console.log('=== Trait Prediction Callback ===');
-    console.log('Data:', data);
-    console.log('Model Filename:', model_filename);
-    console.log('Project ID:', project_id);
-    console.log('Type:', type);
-    console.log('================================');
-
     // Validate required fields
     if (!data || !Array.isArray(data)) {
       return res.status(400).json({
@@ -346,6 +343,166 @@ app.get('/api/reactions/context', (req, res) => {
   });
 });
 
+// ==================== Trait Database Fetch APIs ====================
+
+// Get all trait documents from database
+app.get('/api/traits/db', async (req, res) => {
+  try {
+    const traits = await Trait.find()
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      count: traits.length,
+      data: traits
+    });
+  } catch (error) {
+    console.error('Error fetching traits from database:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get trait by ID
+app.get('/api/traits/db/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const trait = await Trait.findById(id).lean();
+
+    if (!trait) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trait not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: trait
+    });
+  } catch (error) {
+    console.error('Error fetching trait by ID:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get traits by type
+app.get('/api/traits/db/type/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const query = { type: type.toUpperCase() };
+
+    const traits = await Trait.find(query)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      count: traits.length,
+      data: traits
+    });
+  } catch (error) {
+    console.error('Error fetching traits by type:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get traits containing specific trait name
+app.get('/api/traits/db/trait/:traitName', async (req, res) => {
+  try {
+    const { traitName } = req.params;
+    const query = { traits: { $in: [traitName] } };
+
+    const traits = await Trait.find(query)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      count: traits.length,
+      data: traits
+    });
+  } catch (error) {
+    console.error('Error fetching traits by trait name:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get traits needing review
+app.get('/api/traits/db/review', async (req, res) => {
+  try {
+    const query = { reviewTags: { $exists: true, $ne: [] } };
+
+    const traits = await Trait.find(query)
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.json({
+      success: true,
+      count: traits.length,
+      data: traits
+    });
+  } catch (error) {
+    console.error('Error fetching traits needing review:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get statistics/summary
+app.get('/api/traits/db/stats', async (req, res) => {
+  try {
+    const totalTraits = await Trait.countDocuments();
+    const initialReactionCount = await Trait.countDocuments({ type: 'INITIAL_REACTION' });
+    const contextPromptCount = await Trait.countDocuments({ type: 'CONTEXT_PROMPT' });
+    const reviewNeededCount = await Trait.countDocuments({ reviewTags: { $exists: true, $ne: [] } });
+
+    // Get unique trait names
+    const traitNames = await Trait.distinct('traits');
+    const traitCounts = {};
+    
+    for (const traitName of traitNames) {
+      if (traitName) {
+        traitCounts[traitName] = await Trait.countDocuments({ traits: { $in: [traitName] } });
+      }
+    }
+
+    res.json({
+      success: true,
+      stats: {
+        totalDocuments: totalTraits,
+        byType: {
+          initialReaction: initialReactionCount,
+          contextPrompt: contextPromptCount
+        },
+        reviewNeeded: reviewNeededCount,
+        traitDistribution: traitCounts
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching trait statistics:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
@@ -364,7 +521,7 @@ async function startServer() {
     await database.connect();
     
     // Start Express server
-    app.listen(PORT, () => {
+    app.listen(8080, () => {
       console.log(`Server is running on ${PORT}`);
       console.log(`Database status: ${database.getStatus()}`);
     });

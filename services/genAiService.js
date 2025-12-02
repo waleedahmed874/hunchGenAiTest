@@ -71,7 +71,9 @@ console.log('payload============================',payload)
     const genAiScore = present ? 1 : 0;
 
     // Review required ONLY if score is changing AND confidence < 0.80
-    if (genAiScore !== llmScore && confidence < this.reviewThreshold) {
+    // Convert confidence to number to handle string values
+    const confValue = typeof confidence === 'number' ? confidence : parseFloat(confidence);
+    if (genAiScore !== llmScore && confValue < this.reviewThreshold) {
       return true;
     }
 
@@ -85,7 +87,7 @@ console.log('payload============================',payload)
    * - LLM Score = 1, GenAI Says = No (conf > 0.90) → Final Score = 0, Action = Score removed
    * - LLM Score = 0, GenAI Says = Yes (conf > 0.90) → Final Score = 1, Action = Score added
    * - LLM Score = 0, GenAI Says = No → Final Score = 0, Action = No change
-   * - Score changing AND confidence < 0.90 → Final Score = Original, Action = Human review required
+   * - Score changing AND confidence < 0.80 → Final Score = Original, Action = Human review required
    * 
    * @param {number} llmScore - Original LLM score (commentPrediction)
    * @param {Object} genAiResponse - GenAI API response
@@ -102,18 +104,21 @@ console.log('payload============================',payload)
 
     const { present, confidence } = genAiResponse;
     const genAiScore = present ? 1 : 0;
+    
+    // Convert confidence to number to handle string values
+    const confValue = typeof confidence === 'number' ? confidence : parseFloat(confidence);
 
-    // Check if human review is required (score changing AND confidence < 0.90)
+    // Check if human review is required (score changing AND confidence < 0.80)
     if (this.requiresReview(genAiResponse, llmScore)) {
       return {
         action: 'Human review required',
         finalScore: llmScore, // Keep original score until review
-        reason: 'Score change detected with low confidence (< 0.90)'
+        reason: 'Score change detected with low confidence (< 0.80)'
       };
     }
 
-    // LLM Score = 1, GenAI Says = Yes (conf > 0.90) → No change
-    if (llmScore === 1 && present === true && confidence > this.confidenceThreshold) {
+    // LLM Score = 1, GenAI Says = Yes (conf >= 0.90) → No change
+    if (llmScore === 1 && present === true && confValue >= this.confidenceThreshold) {
       return {
         action: 'No change',
         finalScore: 1,
@@ -121,8 +126,8 @@ console.log('payload============================',payload)
       };
     }
 
-    // LLM Score = 1, GenAI Says = No (conf > 0.90) → Score removed
-    if (llmScore === 1 && present === false && confidence > this.confidenceThreshold) {
+    // LLM Score = 1, GenAI Says = No (conf >= 0.90) → Score removed
+    if (llmScore === 1 && present === false && confValue >= this.confidenceThreshold) {
       return {
         action: 'Score removed',
         finalScore: 0,
@@ -130,8 +135,8 @@ console.log('payload============================',payload)
       };
     }
 
-    // LLM Score = 0, GenAI Says = Yes (conf > 0.90) → Score added
-    if (llmScore === 0 && present === true && confidence > this.confidenceThreshold) {
+    // LLM Score = 0, GenAI Says = Yes (conf >= 0.90) → Score added
+    if (llmScore === 0 && present === true && confValue >= this.confidenceThreshold) {
       return {
         action: 'Score added',
         finalScore: 1,

@@ -78,61 +78,162 @@ app.get('/api/traits/initial-reaction', (req, res) => {
 // Process traits and queue tasks to Google Cloud
 app.post('/api/traits/process', async (req, res) => {
   try {
-    // Prepare context prompt results
-    const contextPromptResultsToPost = contextPrompts.map((prompt) => ({
-      ID: prompt.id,
-      comment: gcloudService.cleanText(prompt.text),
-    }));
+    const { csv_data, version, project_input, concept_input } = req.body;
 
-    // Prepare initial reaction results
-    const resultsToPost = initialReactions
-      .map((reaction) => ({
-        ID:reaction.id,
-        comment: gcloudService.cleanText(reaction.text),
-      }));
+    // Validate required fields
+    if (!csv_data || !Array.isArray(csv_data) || csv_data.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'csv_data is required and must be a non-empty array'
+      });
+    }
 
-    const projectId = "691f0de3cde91b17bbb84746";
+    if (!version) {
+      return res.status(400).json({
+        success: false,
+        error: 'version is required (context or basic)'
+      });
+    }
 
-   
+    // Validate version enum
+    const versionLower = version.toLowerCase();
+    if (!['context', 'basic'].includes(versionLower)) {
+      return res.status(400).json({
+        success: false,
+        error: 'version must be either "context" or "basic"'
+      });
+    }
 
-    // Queue tasks for context prompt enabled traits
-    for (const model of traits.filter(trait => trait.contextPromptEnabled)) {
-      try {
-        if (model.gcsFileName && contextPromptResultsToPost && projectId && model.contextPromptEnabled) {
-          const response = await gcloudService.queueTraitTasks(
-            contextPromptResultsToPost,
-            projectId,
-            model.gcsFileName,
-            'CONTEXT_PROMPT'
-          );
-          
-        }
-      } catch (error) {
-        console.log('Error queuing context prompt task:', error);
+    // If version is context, project_input and concept_input are required
+    if (versionLower === 'context') {
+      if (!project_input) {
+        return res.status(400).json({
+          success: false,
+          error: 'project_input is required when version is context'
+        });
+      }
+      if (!concept_input) {
+        return res.status(400).json({
+          success: false,
+          error: 'concept_input is required when version is context'
+        });
       }
     }
 
-    // Queue tasks for initial reaction enabled traits
-    for (const model of traits.filter(trait => trait.initialReactionEnabled)) {
-      try {
-        if (model.initialReactionEnabled && model.gcsFileName && resultsToPost && projectId) {
-          const response = await gcloudService.queueTraitTasks(
-            resultsToPost,
-            projectId,
-            model.gcsFileName,
-            'INITIAL_REACTION'
-          );
-          
-     
+    const projectId = project_input || "691f0de3cde91b17bbb84746";
+
+    // Map csv_data and save to database
+    const savedDocuments = [];
+    
+    for (const item of csv_data) {
+      // Prepare data structure for saving
+      const traitData = {
+        project_input: project_input || projectId,
+        concept_input: concept_input || '',
+        version: versionLower
+      };
+
+      // Save initial_reaction if exists
+      if (item.initial_reaction && item.initial_reaction.trim()) {
+        traitData.initial_reaction = {
+          text: item.initial_reaction.trim(),
+          traits: [],
+          genAiRecords: [],
+          reviewTags: []
+          // type: 'INITIAL_REACTION' is default in schema
+        };
+        traitData.context_prompt = {
+          text: item.context_prompt.trim(),
+          traits: [],
+          genAiRecords: [],
+          reviewTags: []
+          // type: 'CONTEXT_PROMPT' is default in schema
+        };
+                
+        await Trait.create(traitData);
+        
+      }
+
+   
+    }
+
+
+    // Fetch saved documents from database
+    const allSavedDocs = await Trait.find({
+      project_input: project_input || projectId,
+      version: versionLower
+    }).lean();
+
+    // Separate initial_reaction and context_prompt data
+    const initialReactionData = allSavedDocs
+      .filter(doc => doc.initial_reaction && doc.initial_reaction.text)
+      .map(doc => ({
+        ID: doc._id.toString(),
+        comment: gcloudService.cleanText(doc.initial_reaction.text)
+      }));
+
+    const contextPromptData = allSavedDocs
+      .filter(doc => doc.context_prompt && doc.context_prompt.text)
+      .map(doc => ({
+        ID: doc._id.toString(), // MongoDB _id as ID
+        comment: gcloudService.cleanText(doc.context_prompt.text) // text as comment
+      }));
+
+    console.log(`✅ Fetched ${allSavedDocs.length} documents from DB`);
+
+    // Get enabled traits
+    const initialReactionTraits = traits.filter(trait => trait.initialReactionEnabled);
+    const contextPromptTraits = traits.filter(trait => trait.contextPromptEnabled);
+
+    // First: Queue initial_reaction data
+    if (initialReactionData.length > 0 && initialReactionTraits.length > 0) {
+      for (const model of initialReactionTraits) {
+        try {
+          if (model.gcsFileName && projectId) {
+            await gcloudService.queueTraitTasks(
+              initialReactionData,
+              projectId,
+              model.gcsFileName,
+              'INITIAL_REACTION'
+            );
+            console.log(`✅ Queued INITIAL_REACTION task for ${model.title}`);
+          }
+        } catch (error) {
+          console.error(`Error queuing INITIAL_REACTION task for ${model.title}:`, error);
         }
-      } catch (error) {
-        console.log('Error queuing initial reaction task:', model, error);
+      }
+    }
+
+    // Then: Queue context_prompt data
+    if (contextPromptData.length > 0 && contextPromptTraits.length > 0) {
+      for (const model of contextPromptTraits) {
+        try {
+          if (model.gcsFileName && projectId) {
+            await gcloudService.queueTraitTasks(
+              contextPromptData,
+              projectId,
+              model.gcsFileName,
+              'CONTEXT_PROMPT'
+            );
+            console.log(`✅ Queued CONTEXT_PROMPT task for ${model.title}`);
+          }
+        } catch (error) {
+          console.error(`Error queuing CONTEXT_PROMPT task for ${model.title}:`, error);
+        }
       }
     }
 
     res.json({
       success: true,
-   
+      message: 'Data saved and tasks queued successfully',
+      savedDocuments: savedDocuments.map(doc => ({
+        mongoId: doc.mongoId,
+        type: doc.type
+      })),
+      projectId,
+      conceptInput: concept_input,
+      version: versionLower,
+  
     });
   } catch (error) {
     console.error('Error processing traits:', error);
@@ -177,9 +278,6 @@ app.post('/trait-prediction', async (req, res) => {
     const traitDefinition = matchedTrait.trait_definition || '';
     const traitExamples = matchedTrait.trait_examples || '';
 
-    // Get the appropriate reactions array based on type
-    const reactionsArray = type === 'INITIAL_REACTION' ? initialReactions : contextPrompts;
-
     // Process each data item
     const savedTraits = [];
     const errors = [];
@@ -194,19 +292,41 @@ app.post('/trait-prediction', async (req, res) => {
           continue;
         }
 
-        // Find matching text from reaction.js by ID
-        const matchedReaction = reactionsArray.find(reaction => reaction.id === ID);
+        // Find document by MongoDB ID
+        let traitDoc = await Trait.findById(ID);
         
-        if (!matchedReaction) {
-          errors.push({ item, error: `Reaction not found for ID: ${ID}` });
+        if (!traitDoc) {
+          errors.push({ item, error: `Document not found for ID: ${ID}` });
           continue;
         }
 
-        const text = matchedReaction.text;
+        // Get text from the appropriate object based on type
+        let text;
+        let targetObject;
+        
+        if (type === 'INITIAL_REACTION') {
+          if (!traitDoc.initial_reaction || !traitDoc.initial_reaction.text) {
+            errors.push({ item, error: `Initial reaction text not found for ID: ${ID}` });
+            continue;
+          }
+          text = traitDoc.initial_reaction.text;
+          targetObject = traitDoc.initial_reaction;
+        } else if (type === 'CONTEXT_PROMPT') {
+          if (!traitDoc.context_prompt || !traitDoc.context_prompt.text) {
+            errors.push({ item, error: `Context prompt text not found for ID: ${ID}` });
+            continue;
+          }
+          text = traitDoc.context_prompt.text;
+          targetObject = traitDoc.context_prompt;
+        } else {
+          errors.push({ item, error: `Invalid type: ${type}` });
+          continue;
+        }
+
         const llmScore = commentPrediction; // 0 or 1
 
         // Call GenAI API
-        console.log(`🔍 Calling GenAI for ID: ${ID}, trait: ${traitTitle}`);
+        console.log(`🔍 Calling GenAI for ID: ${ID}, trait: ${traitTitle}, type: ${type}`);
         const genAiResult = await genAiService.classify(
           text,
           traitTitle,
@@ -234,20 +354,6 @@ app.post('/trait-prediction', async (req, res) => {
           console.log(`⚠️ Human review required for ID: ${ID}`);
         }
 
-        // Find or create Trait document using upsert (unique by text + type)
-        let traitDoc = await Trait.findOne({ text, type });
-
-        if (!traitDoc) {
-          // Create new document if it doesn't exist
-          traitDoc = new Trait({
-            text,
-            type,
-            traits: [],
-            genAiRecords: [],
-            reviewTags: []
-          });
-        }
-
         // Create GenAI record
         const genAiRecord = {
           llmScore,
@@ -263,27 +369,36 @@ app.post('/trait-prediction', async (req, res) => {
           timestamp: new Date()
         };
 
-        // Add GenAI record to document
-        traitDoc.genAiRecords.push(genAiRecord);
+        // Add GenAI record to the appropriate object
+        if (!targetObject.genAiRecords) {
+          targetObject.genAiRecords = [];
+        }
+        targetObject.genAiRecords.push(genAiRecord);
 
         // Handle trait addition/removal based on final score
-        const hasTrait = traitDoc.traits.includes(traitTitle);
+        if (!targetObject.traits) {
+          targetObject.traits = [];
+        }
+        const hasTrait = targetObject.traits.includes(traitTitle);
 
         if (finalScore === 1 && !hasTrait) {
           // Add trait if final score is 1 and trait not already present
-          traitDoc.traits.push(traitTitle);
+          targetObject.traits.push(traitTitle);
           console.log(`➕ Added trait "${traitTitle}" for ID: ${ID}`);
         } else if (finalScore === 0 && hasTrait) {
           // Remove trait if final score is 0 and trait is present
-          traitDoc.traits = traitDoc.traits.filter(t => t !== traitTitle);
+          targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
           console.log(`➖ Removed trait "${traitTitle}" for ID: ${ID}`);
         }
 
         // Add review tag if human review is required
         if (needsReview) {
+          if (!targetObject.reviewTags) {
+            targetObject.reviewTags = [];
+          }
           const reviewTag = traitTitle;
-          if (!traitDoc.reviewTags.includes(reviewTag)) {
-            traitDoc.reviewTags.push(reviewTag);
+          if (!targetObject.reviewTags.includes(reviewTag)) {
+            targetObject.reviewTags.push(reviewTag);
           }
         }
 

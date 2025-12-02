@@ -6,59 +6,128 @@ const mongoose = require('mongoose');
  */
 const traitSchema = new mongoose.Schema(
   {
-    text: {
+    // Main fields
+    project_input: {
       type: String,
-      required: [true, 'Text is required'],
-      trim: true,
-      index: true // Index for faster text searches
+      required: true,
+      index: true
     },
-    type: {
+    concept_input: {
       type: String,
-      required: [true, 'Type is required'],
-      enum: {
-        values: ['INITIAL_REACTION', 'CONTEXT_PROMPT'],
-        message: 'Type must be either INITIAL_REACTION or CONTEXT_PROMPT'
+      default: ''
+    },
+    version: {
+      type: String,
+      required: true,
+      enum: ['context', 'basic'],
+      index: true
+    },
+    // Initial Reaction Object
+    initial_reaction: {
+      text: {
+        type: String,
+        default: ''
       },
-      index: true // Index for filtering by type
+      traits: {
+        type: [String],
+        default: []
+      },
+      genAiRecords: {
+        type: [{
+          llmScore: {
+            type: Number,
+            required: true
+          },
+          genAiSays: {
+            present: Boolean,
+            confidence: Number,
+            rationale: String,
+            score: Number
+          },
+          finalScore: {
+            type: Number,
+            required: true
+          },
+          action: {
+            type: String,
+            enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
+            required: true
+          },
+          traitTitle: String,
+          timestamp: {
+            type: Date,
+            default: Date.now
+          }
+        }],
+        default: []
+      },
+      type: {
+        type: String,
+        enum: ['INITIAL_REACTION'],
+        default: 'INITIAL_REACTION'
+      },
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: () => new mongoose.Types.ObjectId()
+      },
+      reviewTags: {
+        type: [String],
+        default: []
+      }
     },
-    traits: {
-      type: [String],
-      required: [true, 'Traits array is required'],
-      default: []
+    // Context Prompt Object
+    context_prompt: {
+      text: {
+        type: String,
+        default: ''
+      },
+      traits: {
+        type: [String],
+        default: []
+      },
+      genAiRecords: {
+        type: [{
+          llmScore: {
+            type: Number,
+            required: true
+          },
+          genAiSays: {
+            present: Boolean,
+            confidence: Number,
+            rationale: String,
+            score: Number
+          },
+          finalScore: {
+            type: Number,
+            required: true
+          },
+          action: {
+            type: String,
+            enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
+            required: true
+          },
+          traitTitle: String,
+          timestamp: {
+            type: Date,
+            default: Date.now
+          }
+        }],
+        default: []
+      },
+      reviewTags: {
+        type: [String],
+        default: []
+      },
+      type: {
+        type: String,
+        enum: ['CONTEXT_PROMPT'],
+        default: 'CONTEXT_PROMPT'
+      },
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: () => new mongoose.Types.ObjectId()
+      }
     },
-    genAiRecords: {
-      type: [{
-        llmScore: {
-          type: Number,
-          required: true
-        },
-        genAiSays: {
-          present: Boolean,
-          confidence: Number,
-          rationale: String,
-          score: Number
-        },
-        finalScore: {
-          type: Number,
-          required: true
-        },
-        action: {
-          type: String,
-          enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
-          required: true
-        },
-        traitTitle: String,
-        timestamp: {
-          type: Date,
-          default: Date.now
-        }
-      }],
-      default: []
-    },
-    reviewTags: {
-      type: [String],
-      default: []
-    }
   },
   {
     timestamps: true, // Adds createdAt and updatedAt fields
@@ -66,11 +135,11 @@ const traitSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for efficient queries
-traitSchema.index({ type: 1, createdAt: -1 });
-
-// Unique compound index to ensure one entry per text + type combination
-traitSchema.index({ text: 1, type: 1 }, { unique: true });
+// Compound indexes for efficient queries
+traitSchema.index({ project_input: 1, version: 1, createdAt: -1 });
+traitSchema.index({ 'initial_reaction._id': 1 });
+traitSchema.index({ 'context_prompt._id': 1 });
+traitSchema.index({ version: 1, createdAt: -1 });
 
 // Instance method to add a trait
 traitSchema.methods.addTrait = function(trait) {

@@ -8,7 +8,7 @@ class GenAiService {
   constructor() {
     this.apiUrl = 'https://data-science-dev-git-320866101884.us-central1.run.app/classify';
     this.confidenceThreshold = 0.90;
-    this.reviewThreshold = 0.70; // Lower threshold for human review
+    this.reviewThreshold = 0.80; // Review threshold for human review
   }
 
   /**
@@ -57,7 +57,7 @@ console.log('payload============================',payload)
 
   /**
    * Determine if human review is required
-   * Human review is required ONLY when score is changing AND confidence < 0.90
+   * Human review is required ONLY when score is changing AND confidence < 0.80
    * @param {Object} genAiResponse - GenAI API response
    * @param {number} llmScore - Original LLM score (commentPrediction)
    * @returns {boolean} Whether human review is required
@@ -70,8 +70,8 @@ console.log('payload============================',payload)
     const { confidence, present } = genAiResponse;
     const genAiScore = present ? 1 : 0;
 
-    // Review required ONLY if score is changing AND confidence < 0.90
-    if (genAiScore !== llmScore && confidence < this.confidenceThreshold) {
+    // Review required ONLY if score is changing AND confidence < 0.80
+    if (genAiScore !== llmScore && confidence < this.reviewThreshold) {
       return true;
     }
 

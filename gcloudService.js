@@ -32,7 +32,6 @@ class GCloudService {
       type: type,
       data: rawResults,
     };
-console.log('payload',payload)
     // body must be base64-encoded string
     const body = Buffer.from(JSON.stringify(payload)).toString('base64');
 

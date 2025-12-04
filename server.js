@@ -618,6 +618,27 @@ app.get('/api/traits/db/stats', async (req, res) => {
   }
 });
 
+// Delete all trait documents from database
+app.delete('/api/traits/db', async (req, res) => {
+  try {
+    const result = await Trait.deleteMany({});
+    
+    console.log(`🗑️  Deleted ${result.deletedCount} trait document(s) from database`);
+    
+    res.json({
+      success: true,
+      message: 'All traits deleted successfully',
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error deleting traits from database:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });

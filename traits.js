@@ -73,7 +73,23 @@ const traits = [{
     "trait_definition": "The overall vibe is clearly positive or leans positive, or there is a positive tone present in part of the reaction even if something negative is also said. The context could be personal, projective, rational, or emotive, and could range from a simple \u201cyes\u201d or \"good\" to a matter-of-fact compliment or projection of success, to personal emotion being expressed. It's not uncommon for reactions with positivity present to also include some skeptical distraction, or to be polarized where somene is saying something both positive and negative within their whole reaction (e.g. \"I am leery about this because usually I call BS on anything with scent claiming to be all natural, but I really think these scents could work\").",
     "trait_examples": "\"I would try it. I love Creme Brulee\"\n\"Sounds good, a little pricey\"\n\"I think it looks delicious.\"\n\"Yes, pets and carpet get messy.\"\n\"I think this is something I would buy!\"\n\"Yum\"\n\"It seems very unique and different\"\n\"It make me want to drink more coffee\"\n\"Nothing spectacular but straight to the point I liked it\" ",
     "parentTraits": []
-  }
+  },
+ {
+    "_id": "6178f26523c29c21b201d769",
+  "gcsFileName": "Negativity.h5",
+  "contextPromptEnabled": false,
+  "initialReactionEnabled": true,
+  "expandedView": true,
+  "description": "A negative tone is present",
+  "hideThemeTag": false,
+  "__v": 0,
+  "color": "negative",
+  "title": "Negativity",
+  "trait_definition": "The overall vibe is clearly negative or leans negative, or there is a negative tone present in part of the reaction, regardless of how much is said. The context could be personal, projective, rational, or emotive, and could range from mild criticism or expressed doubtfulness to outright rejection or clear emotive disgust or contempt. The negativity vibe should be directed to the concept itself.  If someone is relating to the problem being solved, that is a positive sign of Problem Relatability, and is not Negativity. High Negativity Vibe signals risk or improvement opportunity, which is why Problem Relatability is not scored as Negativity. Also, mild Distraction can be present without Negativity. For instance, skeptical vibe can be constructive or even hopeful in tone, unclear or fixable vibe also might not feel negative in tone. An example is \"I really like this idea, I hope it's affordable.\" In this instance there is slight skeptical distraction, but no negativity felt toward the concept. Someone might also express a negative tone about people or users, while feeling positive about the concept itself. That said, polarization is common, where someone is expressing both  both Positivity and Negativity in their reaction about the concept (e.g. \"I hate coconut anything, but would try the orange flavor.\")",
+  "trait_examples": "\"Bad idea\".\n\"This sounds like what every shampoo brand says, so I think it would fall flat\".\n\"I don't do plant based desserts, gross.\"\n\"This sounds absolutely wonderful! However, sadly, I don't associate employees at McDonalds with barista skills. I certainly do hope this can work and that it does take off. Sadly, I have my reservations regarding employees and consistency of products.\"",
+  "traitType": "primary",
+  "parentTraits": []
+}
 ];
 
 module.exports = { traits };

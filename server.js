@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const WebSocket = require('ws');
 const database = require('./db');
 const { traits } = require('./traits');
 const { initialReactions, contextPrompts } = require('./reaction');
@@ -9,8 +11,50 @@ const Trait = require('./models/Trait');
 const genAiService = require('./services/genAiService');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
+
+// WebSocket server
+const wss = new WebSocket.Server({ server });
+
+// Store connected clients
+const clients = new Set();
+
+// WebSocket connection handling
+wss.on('connection', (ws) => {
+  console.log('✅ New WebSocket client connected');
+  clients.add(ws);
+
+  // Send welcome message
+  ws.send(JSON.stringify({
+    type: 'connected',
+    message: 'WebSocket connection established',
+    timestamp: new Date().toISOString()
+  }));
+
+  // Handle client disconnect
+  ws.on('close', () => {
+    console.log('❌ WebSocket client disconnected');
+    clients.delete(ws);
+  });
+
+  // Handle errors
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    clients.delete(ws);
+  });
+});
+
+// Helper function to broadcast to all connected clients
+function broadcastUpdate(data) {
+  const message = JSON.stringify(data);
+  clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+}
 
 // Enable CORS for all origins
 app.use(cors());
@@ -122,6 +166,17 @@ app.post('/api/traits/process', async (req, res) => {
 
     const projectId = project_input || "691f0de3cde91b17bbb84746";
 
+    // Broadcast processing start
+    broadcastUpdate({
+      type: 'processing_started',
+      message: 'Trait processing started',
+      totalItems: csv_data.length,
+      version: versionLower,
+      project_input: project_input || projectId,
+      concept_input: concept_input || '',
+      timestamp: new Date().toISOString()
+    });
+
     // Map csv_data and save to database
     const savedDocuments = [];
     
@@ -150,8 +205,26 @@ app.post('/api/traits/process', async (req, res) => {
           // type: 'CONTEXT_PROMPT' is default in schema
         };
                 
-        await Trait.create(traitData);
+        const savedDoc = await Trait.create(traitData);
+        savedDocuments.push({
+          mongoId: savedDoc._id.toString(),
+          type: 'INITIAL_REACTION'
+        });
         
+        // Broadcast document created
+        broadcastUpdate({
+          type: 'document_created',
+          documentId: savedDoc._id.toString(),
+          document: {
+            _id: savedDoc._id.toString(),
+            project_input: savedDoc.project_input,
+            concept_input: savedDoc.concept_input,
+            version: savedDoc.version,
+            initial_reaction: savedDoc.initial_reaction,
+            context_prompt: savedDoc.context_prompt
+          },
+          timestamp: new Date().toISOString()
+        });
       }
 
    
@@ -197,6 +270,15 @@ app.post('/api/traits/process', async (req, res) => {
               'INITIAL_REACTION'
             );
             console.log(`✅ Queued INITIAL_REACTION task for ${model.title}`);
+            
+            // Broadcast task queued
+            broadcastUpdate({
+              type: 'task_queued',
+              traitTitle: model.title,
+              type: 'INITIAL_REACTION',
+              dataCount: initialReactionData.length,
+              timestamp: new Date().toISOString()
+            });
           }
         } catch (error) {
           console.error(`Error queuing INITIAL_REACTION task for ${model.title}:`, error);
@@ -216,6 +298,15 @@ app.post('/api/traits/process', async (req, res) => {
               'CONTEXT_PROMPT'
             );
             console.log(`✅ Queued CONTEXT_PROMPT task for ${model.title}`);
+            
+            // Broadcast task queued
+            broadcastUpdate({
+              type: 'task_queued',
+              traitTitle: model.title,
+              type: 'CONTEXT_PROMPT',
+              dataCount: contextPromptData.length,
+              timestamp: new Date().toISOString()
+            });
           }
         } catch (error) {
           console.error(`Error queuing CONTEXT_PROMPT task for ${model.title}:`, error);
@@ -223,9 +314,33 @@ app.post('/api/traits/process', async (req, res) => {
       }
     }
 
+    // Broadcast processing completed
+    broadcastUpdate({
+      type: 'processing_completed',
+      message: 'Trait processing completed',
+      savedDocuments: savedDocuments.length,
+      queuedTasks: {
+        initialReaction: initialReactionData.length > 0 ? initialReactionTraits.length : 0,
+        contextPrompt: contextPromptData.length > 0 ? contextPromptTraits.length : 0
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    // Use already fetched documents for response
     res.json({
       success: true,
       message: 'Data saved and tasks queued successfully',
+      data: allSavedDocs.map(doc => ({
+        _id: doc._id.toString(),
+        project_input: doc.project_input,
+        concept_input: doc.concept_input,
+        version: doc.version,
+        initial_reaction: doc.initial_reaction,
+        context_prompt: doc.context_prompt,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt
+      })),
+      count: allSavedDocs.length,
       savedDocuments: savedDocuments.map(doc => ({
         mongoId: doc.mongoId,
         type: doc.type
@@ -233,7 +348,10 @@ app.post('/api/traits/process', async (req, res) => {
       projectId,
       conceptInput: concept_input,
       version: versionLower,
-  
+      queuedTasks: {
+        initialReaction: initialReactionData.length > 0 ? initialReactionTraits.length : 0,
+        contextPrompt: contextPromptData.length > 0 ? contextPromptTraits.length : 0
+      }
     });
   } catch (error) {
     console.error('Error processing traits:', error);
@@ -410,6 +528,38 @@ app.post('/trait-prediction', async (req, res) => {
           savedTraits.push(savedTrait);
           processedIds.add(ID);
         }
+
+        // Determine what happened (trait added, removed, or no change)
+        const traitChanged = (finalScore === 1 && !hasTrait) || (finalScore === 0 && hasTrait);
+        const eventType = traitChanged 
+          ? (finalScore === 1 ? 'trait_added' : 'trait_removed')
+          : 'trait_updated';
+
+        // Broadcast complete document data via WebSocket
+        broadcastUpdate({
+          type: eventType,
+          documentId: ID,
+          document: {
+            _id: savedTrait._id.toString(),
+            project_input: savedTrait.project_input,
+            concept_input: savedTrait.concept_input,
+            version: savedTrait.version,
+            initial_reaction: savedTrait.initial_reaction,
+            context_prompt: savedTrait.context_prompt,
+            createdAt: savedTrait.createdAt,
+            updatedAt: savedTrait.updatedAt
+          },
+          traitTitle: traitTitle,
+          traitType: type,
+          traits: targetObject.traits,
+          genAiRecord: genAiRecord,
+          llmScore: llmScore,
+          genAiScore: genAiScore,
+          finalScore: finalScore,
+          action: action,
+          needsReview: needsReview,
+          timestamp: new Date().toISOString()
+        });
 
         console.log(`✅ Processed ID: ${ID} | LLM: ${llmScore} | GenAI: ${genAiScore} | Final: ${finalScore} | Action: ${action}`);
       } catch (itemError) {
@@ -656,9 +806,10 @@ async function startServer() {
     // Connect to MongoDB
     await database.connect();
     
-    // Start Express server
-    app.listen(PORT, () => {
+    // Start HTTP and WebSocket server
+    server.listen(PORT, () => {
       console.log(`Server is running on ${PORT}`);
+      console.log(`WebSocket server is running on ws://localhost:${PORT}`);
       console.log(`Database status: ${database.getStatus()}`);
     });
   } catch (error) {

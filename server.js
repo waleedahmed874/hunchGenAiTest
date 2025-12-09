@@ -15,16 +15,23 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
 
-// WebSocket server
-const wss = new WebSocket.Server({ server });
+// WebSocket server with ping/pong to keep connections alive
+const wss = new WebSocket.Server({ 
+  server,
+  clientTracking: true,
+  perMessageDeflate: false
+});
 
 // Store connected clients
 const clients = new Set();
 
 // WebSocket connection handling
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   console.log('✅ New WebSocket client connected');
   clients.add(ws);
+
+  // Mark connection as alive
+  ws.isAlive = true;
 
   // Send welcome message
   ws.send(JSON.stringify({
@@ -33,9 +40,14 @@ wss.on('connection', (ws) => {
     timestamp: new Date().toISOString()
   }));
 
+  // Handle pong response (client is alive)
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
+
   // Handle client disconnect
-  ws.on('close', () => {
-    console.log('❌ WebSocket client disconnected');
+  ws.on('close', (code, reason) => {
+    console.log(`❌ WebSocket client disconnected (code: ${code}, reason: ${reason || 'none'})`);
     clients.delete(ws);
   });
 
@@ -44,16 +56,74 @@ wss.on('connection', (ws) => {
     console.error('WebSocket error:', error);
     clients.delete(ws);
   });
+
+  // Handle incoming messages (if needed)
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      // Handle client messages if needed
+      if (data.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+      }
+    } catch (error) {
+      console.error('Error parsing WebSocket message:', error);
+    }
+  });
+});
+
+// Ping all clients every 30 seconds to keep connections alive
+const pingInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log('⚠️ Terminating dead WebSocket connection');
+      return ws.terminate();
+    }
+    
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch (error) {
+      console.error('Error pinging WebSocket client:', error);
+      clients.delete(ws);
+    }
+  });
+}, 30000);
+
+// Clean up interval on server shutdown
+process.on('SIGINT', () => {
+  clearInterval(pingInterval);
+  wss.close();
 });
 
 // Helper function to broadcast to all connected clients
 function broadcastUpdate(data) {
   const message = JSON.stringify(data);
+  let sentCount = 0;
+  let errorCount = 0;
+  
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
+      try {
+        client.send(message);
+        sentCount++;
+      } catch (error) {
+        console.error('Error sending WebSocket message:', error);
+        errorCount++;
+        // Remove dead connection
+        clients.delete(client);
+      }
+    } else {
+      // Remove closed connections
+      clients.delete(client);
     }
   });
+  
+  if (sentCount > 0) {
+    console.log(`📤 Broadcasted to ${sentCount} client(s)`);
+  }
+  if (errorCount > 0) {
+    console.warn(`⚠️ Failed to send to ${errorCount} client(s)`);
+  }
 }
 
 // Enable CORS for all origins

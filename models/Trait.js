@@ -28,6 +28,7 @@ const traitSchema = new mongoose.Schema(
         type: String,
         default: ''
       },
+      
       traits: {
         type: [String],
         default: []
@@ -37,6 +38,10 @@ const traitSchema = new mongoose.Schema(
           llmScore: {
             type: Number,
             required: true
+          },
+          feedback: {
+            type: String,
+            default: ''
           },
           genAiSays: {
             present: Boolean,
@@ -90,6 +95,10 @@ const traitSchema = new mongoose.Schema(
           llmScore: {
             type: Number,
             required: true
+          },
+          feedback: {
+            type: String,
+            default: ''
           },
           genAiSays: {
             present: Boolean,

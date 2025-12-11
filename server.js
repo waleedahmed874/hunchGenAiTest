@@ -679,7 +679,75 @@ app.get('/api/reactions/context', (req, res) => {
 });
 
 // ==================== Trait Database Fetch APIs ====================
+// Add feedback to a specific trait's genAiRecords entry
+// Body: { documentId, traitName, feedback, type: 'INITIAL_REACTION' | 'CONTEXT_PROMPT' }
+app.post('/api/traits/feedback', async (req, res) => {
+  try {
+    const { documentId, traitName, feedback, type } = req.body;
 
+    if (!documentId || !traitName || !feedback || !type) {
+      return res.status(400).json({
+        success: false,
+        error: 'documentId, traitName, feedback, and type are required'
+      });
+    }
+
+    const targetType = type === 'INITIAL_REACTION' ? 'initial_reaction'
+                    : type === 'CONTEXT_PROMPT' ? 'context_prompt'
+                    : null;
+
+    if (!targetType) {
+      return res.status(400).json({ success: false, error: 'type must be INITIAL_REACTION or CONTEXT_PROMPT' });
+    }
+
+    const doc = await Trait.findById(documentId);
+    if (!doc) {
+      return res.status(404).json({ success: false, error: 'Document not found' });
+    }
+
+    const target = doc[targetType];
+    if (!target || !Array.isArray(target.genAiRecords)) {
+      return res.status(404).json({ success: false, error: `No genAiRecords found for type ${type}` });
+    }
+
+    // Find the most recent matching record by traitTitle
+    const idx = [...target.genAiRecords].reverse().findIndex(
+      r => r.traitTitle === traitName
+    );
+    if (idx === -1) {
+      return res.status(404).json({ success: false, error: `genAiRecord for trait ${traitName} not found` });
+    }
+
+    // Map back to original index
+    const recordIndex = target.genAiRecords.length - 1 - idx;
+    const existing = target.genAiRecords[recordIndex] || {};
+
+    // Ensure required fields exist to satisfy schema validation
+    target.genAiRecords[recordIndex] = {
+      ...existing,
+      llmScore: existing.llmScore ?? 0,
+      finalScore: existing.finalScore ?? (existing.genAiSays?.score ?? 0),
+      action: existing.action ?? 'No change',
+      traitTitle: existing.traitTitle ?? traitName,
+      genAiSays: existing.genAiSays ?? {},
+      feedback
+    };
+
+    await doc.save();
+
+    return res.json({
+      success: true,
+      message: 'Feedback added to genAiRecord',
+      documentId,
+      type,
+      traitName,
+      updatedRecord: target.genAiRecords[recordIndex]
+    });
+  } catch (error) {
+    console.error('Error adding feedback:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
 // Get all trait documents from database
 app.get('/api/traits/db', async (req, res) => {
   try {

@@ -29,12 +29,11 @@ class GenAiService {
         trait_examples: traitExamples,
         version
       };
-console.log('payload============================',payload)
       const response = await axios.post(this.apiUrl, payload, {
         headers: {
           'Content-Type': 'application/json'
         },
-        timeout: 30000 // 30 seconds timeout
+        timeout: 60000 // 60 seconds timeout
       });
 
       return {
@@ -104,7 +103,7 @@ console.log('payload============================',payload)
 
     const { present, confidence } = genAiResponse;
     const genAiScore = present ? 1 : 0;
-    
+
     // Convert confidence to number to handle string values
     const confValue = typeof confidence === 'number' ? confidence : parseFloat(confidence);
 

@@ -1,35 +1,5 @@
 const traits = [
   {
-    "_id": "62822026793707eaf32b23fb",
-    "gcsFileName": "Niche (Prompted).h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": false,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "fixable",
-    "title": "Niche (Prompted)",
-    "trait_definition": "Can be associated with FORESIGHT or NICHE and therefore could be personal or projective. Explicit mention of the product or concept being beneficial for someone with health conditions ",
-    "trait_examples": "Examples are the same as Niche Initial.",
-    "traitType": "primary",
-    "parentTraits": [],
-  },
-  {
-    "_id": "6178f26523c29c21b201d765",
-    "gcsFileName": "Emotive Delight.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "title": "Emotive Delight",
-    "trait_definition": "Emotive Delight is an explicit or implied presence of positive emotion such as anticipation, joy, happiness, excitement, relief, fondness, gratitude, etc. Relief, for example, is often expressed when someone believes the concept is solving a real problem they currently experience. Fondess is often expressed when someone relates to something familiar like the brand name (if a brand name is shown), the general product category, or any specific element. Their response can be any length, as long as indication of positive emotion is present. An exclamation point can often signal an emotive response such as \"This seems like it would feel amazing!\", but the presence of an exclamation point is not an automatic indicator. Someone simply using the word \"great\" or \"love\" does not automatically mean there is Emotive Delight. You should be able to sense emotion in what they say and how they say it. Emotive Delight and Foresight are often both present when someone is expressing positive emotion while also relating to the concept with in a personal way and envisioning how it would play a role in making life easier, better, or helping them feel more special.  ",
-    "trait_examples": "I think this idea is genius! | It sounds good to me! It would solve a big problem! | Looks yummy I love nut butter | Of course it appeals to me. Don't see a downside! | Citrus. Spice. What's not to like!?!? | Yummy! | I think it's a superb idea and I'd love to try them both.",
-    "traitType": "primary",
-    "parentTraits": [],
-  },
-  {
     "_id": "6178f26523c29c21b201d767",
     "gcsFileName": "Foresight.h5",
     "contextPromptEnabled": false,
@@ -41,21 +11,6 @@ const traits = [
     "title": "Foresight",
     "trait_definition": "Foresight is when someone immediately envisions life situations where this concept will make life better, easier, or more special in some way. The primary indicator of Foresight in one's Initial Reaction is when they don't just tell us their thoughts about the concept or give feedback about it's success potential, but they go on to use their own words to describe who, what, when, how, or why a concept can help them or someone else. The vibe of Foresight should be positive, but does not have to be emotive. In the Initial Reaction, we are not asking participants to tell us \"why\" or \"who\" or \"when\" yet - we've only asked what they think about the idea. Another clear indication of Foresight is when someone says they would or would want to try, buy or use the concept.\n\nThere can also be implied Foresight when there is indication that someone is relating to the concept in a personal way beyond simply giving feedback.The vibe of personal relatability can be subtle, and can be expressed in hindsight or have a futuristic tone. Recollections of previous situations or life moments are often in expressed in hindsight. For example, \"Yes, my dog seems to slow down on long hikes or tire easily\". Foresight can also have a projective rather than personal tone, where they are stating who or when someone else would like, need, use, or benefit from the concept.  \n\nIn summary, for Foresight to be present one of three things should be present - 1) explicit situational who/what/when/where/why context given, and/or 2) expressed interest in or intent to try, use or buy such as \"I would like to try this\", and/or 3) indication of implied relatability beyond someone simply showing that they understand the gist of the concept. \n\nForesight is not present if someone is simply complimenting or restating an explicit element or benefit described in the concept (this would be an \"Intuitive\" vibe only). ",
     "trait_examples": "I think this is a good idea. I like frozen desserts, so this is something I would try. | I love it. One of the biggest things is it prevents eye fatigue which I have a big problem of already so I love that. | It would appeal to my son. | I think it's great it allows me to be my own boss.",
-    "traitType": "primary",
-    "parentTraits": [],
-  },
-  {
-    "_id": "6178f26523c29c21b201d76a",
-    "gcsFileName": "Neutrality.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "neutral",
-    "title": "Neutrality",
-    "trait_definition": "Neutrality is lack of any positive or negative tone or commentary. The context could range from a simple \"OK\" or \"fine,\" to expressed or implied ambivalence and indifference to an idea. \n",
-    "trait_examples": "",
     "traitType": "primary",
     "parentTraits": [],
   },
@@ -158,57 +113,6 @@ const traits = [
     "trait_examples": "I think it would be successful since I also like almond | Natural ingredients with no irritating chemical odors is very appealing | I think it would be successful. Mushrooms are becoming more popular for nutrition and mental health."
   },
   {
-    "_id": "6178f26523c29c21b201d75b",
-    "gcsFileName": "(INTUITIVE) Makes Life Easier.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d768"
-    ],
-    "title": "(INTUITIVE) Makes Life Easier",
-    "traitType": "secondary",
-    "trait_definition": "Intuitive vibe directly associated with the notion of making life easier in some way - whether it's saving time, money, or anything related to conveinence, etc.",
-    "trait_examples": "I want hassle free litter that makes my cat happy as well | I would purchase this. Looks like a much easier way to get probiotics | It would making cooking easier I like it"
-  },
-  {
-    "_id": "6178f26523c29c21b201d74e",
-    "gcsFileName": "(EMOTIVE DELIGHT) Brand Love.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d765"
-    ],
-    "title": "(EMOTIVE DELIGHT) Brand Love",
-    "traitType": "secondary",
-    "trait_definition": "Emotive Delight directly associated with fondness for the brand, which can be expressed in hindsight or in a futuristic tone.",
-    "trait_examples": "I love World's Best Cat Litter so of course it's a great idea. | I love Starbucks coffee, they always taste wonderful. I would be very eager to try. | Anything McDonald's does is usually yummy! | This is one of my favorite brands, I'd try anything they put out there! | I love this brand."
-  },
-  {
-    "_id": "6178f26523c29c21b201d750",
-    "gcsFileName": "(EMOTIVE DELIGHT) Flavor Love.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d765"
-    ],
-    "title": "(EMOTIVE DELIGHT) Flavor Love",
-    "traitType": "secondary",
-    "trait_definition": "Emotive Delight directly associated with the flavor or flavors being offered.",
-    "trait_examples": "I loooove vanilla! | I especially would be looking forward to the chai flavored one in particular! | The flavors available sound delicious | I love anything flavored with honey. Especially real organic honey unfiltered"
-  },
-  {
     "_id": "6178f26523c29c21b201d74d",
     "gcsFileName": "(EMOTIVE DELIGHT) Enticing.h5",
     "contextPromptEnabled": false,
@@ -241,23 +145,6 @@ const traits = [
     "traitType": "secondary",
     "trait_definition": "Emotive Delight directly associated with a specific ingredient used in the product or the ingredients in general.",
     "trait_examples": "It is appealing because it is sweetened with monkfruit! | Love the ingredients that it has | It sounds really good I love natural ingredients | I love macadamia nuts, I think it would be very tasty."
-  },
-  {
-    "_id": "6178f26523c29c21b201d74c",
-    "gcsFileName": "(EMOTIVE DELIGHT) Makes Life Easier!.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d765"
-    ],
-    "title": "(EMOTIVE DELIGHT) Makes Life Easier!",
-    "traitType": "secondary",
-    "trait_definition": "Emotive Delight directly associated with the notion of making life easier in some way.",
-    "trait_examples": "It would be such an amazing idea and super useful! | As a busy mom, I would love to have my children have the variety of dips for a snack | I think it's an awesome idea and super convenient. | I love it it would help us out so much."
   },
   {
     "_id": "6178f26523c29c21b201d752",
@@ -425,110 +312,6 @@ const traits = [
     "trait_examples": "I think this product would be successful, especially around the winter time | I would definitely buy it for my dogs, especially in the summer | The idea of seasonal frozen dessert flavors sounds fun and appealing to me, especially the pecan pumpkin pie."
   },
   {
-    "_id": "627d45f24bcce8cde00dbdba",
-    "gcsFileName": "(FORESIGHT-NICHE) Social Gatherings.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Social Gatherings",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived good for social gatherings such as family dinners or gatherings with friends, parties, socializing.",
-    "trait_examples": "Something I would definitely drink at a bbq with girlfriends! | I believe it would be a good bonding time with family / friends. | I like the ideas of fruits alcoholic beverages they are perfect for the summer and backyard parties."
-  },
-  {
-    "_id": "627d3afb4bcce8cde00dbdb4",
-    "gcsFileName": "(FORESIGHT-NICHE) Special Occasion - Event.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Special Occasion - Event",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived good for for special occasions or events such as birthday parties or weddings.",
-    "trait_examples": "I'm sure this would be something people would try for birthday parties, anniversary parties, and special occasions. | It would allow people to make a nice cake for a special occasion at an affordable price | I love how it's mentioned to be used basically as a special occasion item."
-  },
-  {
-    "_id": "627d455a4bcce8cde00dbdb8",
-    "gcsFileName": "(FORESIGHT-NICHE) Travel.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Travel",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived good for for traveling, for travelers, when traveling, etc.",
-    "trait_examples": "There is little waste and it would be extremely convenient when traveling | I love to travel so this sounds like a fantastic idea | It is very convient. It would be good for hotels or when you are traveling."
-  },
-  {
-    "_id": "6178f26523c29c21b201d76b",
-    "gcsFileName": "New News.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "title": "New News",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "New News is an implied or explicit perception that something about this concept feels new, different, novel, distinctive, original, unique, or attention-grabbing in some way.",
-    "trait_examples": "Yes, I think it would work, it sounds really innovative. | I love everything about it because it's very eye catching and seems legit. | Something new and different to try. | I think the idea is unique, creative, and innovative. It is the future. I would definitely buy."
-  },
-  {
-    "_id": "627d39234bcce8cde00dbdad",
-    "gcsFileName": "(NEW NEWS) Eye Catching.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d76b"
-    ],
-    "title": "(NEW NEWS) Eye Catching",
-    "traitType": "secondary",
-    "trait_definition": "New News directly associated with the perception that the concept or something about it is attention-grabbing or eye-catching.",
-    "trait_examples": "I like the ideas personally. It grabs your attention and informs you | It looks very colorful and fun for my son | I think the packaging is cute which will help it sell in stores"
-  },
-  {
-    "_id": "6178f26523c29c21b201d773",
-    "gcsFileName": "Surprise.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "title": "Surprise",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "Surprise is perceived New News expressed with emotion, where someone is conveing a sense of wow, unexpected delight, amazement, or astonishment.",
-    "trait_examples": "Wow, so cool, I hope it really works! | This is interesting, I've never seen anything like it! | Are these real?!? They should be!! Oh gosh, what a game changer that would be!!!"
-  },
-  {
     "_id": "6178f26523c29c21b201d76c",
     "gcsFileName": "Niche.h5",
     "contextPromptEnabled": false,
@@ -560,21 +343,7 @@ const traits = [
     "trait_definition": "Negativity or Neutrality vibe directly associated with the belief that this concept might or will be extra work, too much work, too hard, too many steps, or generally just too complicated.",
     "trait_examples": "It doesn't save any time, maybe adds more | I can't imagine doing this all the time"
   },
-  {
-    "_id": "6178f26523c29c21b201d766",
-    "gcsFileName": "Fixable.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "fixable",
-    "title": "Fixable (Initial)",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "Fixable vibe is when somene is suggesting or implying the concept should be changed, improved or fixed in any way, to make it more appealing, more relevant, or to otherwise optimize chances for market success.",
-    "trait_examples": "I think you should not mention poop like that so often. Talk about the smell rather than the poop. | I love cold brew & I love green tea; however, I feel like people will not be interested in it. | It's a good idea, but the description is a little wordy. | I like it but I'd add some additional color options."
-  },
+
   {
     "_id": "6179bc0d23c29c21b201d77b",
     "gcsFileName": "(SKEPTICAL) Hopeful Skepticism.h5",
@@ -675,37 +444,21 @@ const traits = [
     "trait_definition": "Overpriced vibe that is an assumption, which mainly shows up for un-priced concepts.",
     "trait_examples": "This is appealing, but I bet it's going to be expensive. | I think it's a good idea, however if it's too expensive, not a lot of people will invest in it."
   },
-  {
-    "_id": "6178f26523c29c21b201d769",
-    "gcsFileName": "Negativity.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": true,
-    "description": "A negative tone is present",
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "negative",
-    "title": "Negativity",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "The overall vibe is clearly negative or leans negative, or there is a negative tone present in part of the reaction, regardless of how much is said.",
-    "trait_examples": "Bad idea. | This sounds like what every shampoo brand says, so I think it would fall flat. | I don't do plant based desserts, gross. | This sounds absolutely wonderful! However, sadly, I don't associate employees at McDonalds with barista skills."
-  },
-  {
-    "_id": "6178f26523c29c21b201d76d",
-    "gcsFileName": "Nonsense.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "negative",
-    "title": "Nonsense",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "",
-    "trait_examples": ""
-  },
+  // {
+  //   "_id": "6178f26523c29c21b201d76d",
+  //   "gcsFileName": "Nonsense.h5",
+  //   "contextPromptEnabled": false,
+  //   "initialReactionEnabled": true,
+  //   "expandedView": false,
+  //   "hideThemeTag": false,
+  //   "__v": 0,
+  //   "color": "negative",
+  //   "title": "Nonsense",
+  //   "traitType": "primary",
+  //   "parentTraits": [],
+  //   "trait_definition": "",
+  //   "trait_examples": ""
+  // },
   {
     "_id": "6178f26523c29c21b201d76f",
     "gcsFileName": "Overpriced.h5",
@@ -735,25 +488,6 @@ const traits = [
     "parentTraits": [],
     "trait_definition": "Surprise is perceived New News expressed with emotion, where someone is conveing a sense of wow, unexpected delight, amazement, or astonishment.",
     "trait_examples": "Wow, so cool, I hope it really works! | This is interesting, I've never seen anything like it! | Are these real?!? They should be!! Oh gosh, what a game changer that would be!!!"
-  },
-  {
-    "_id": "6178f26523c29c21b201d756",
-    "gcsFileName": "(FORESIGHT-NICHE) Seasonal.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Seasonal",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived as good for a specific season.",
-    "trait_examples": "I think this product would be successful, especially around the winter time | I would definitely buy it for my dogs, especially in the summer | The idea of seasonal frozen dessert flavors sounds fun and appealing to me, especially the pecan pumpkin pie."
   },
   {
     "_id": "6178f26523c29c21b201d75d",
@@ -899,23 +633,6 @@ const traits = [
     "trait_examples": "Vanilla, chocolate, and coffee are usually too sweet for yogurt for me | I do not like Greek yogurt in any flavor, but especially not coconut"
   },
   {
-    "_id": "627d38414bcce8cde00dbdab",
-    "gcsFileName": "(NEUTRALITY-NEGATIVITY) Too Much Work.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "negative",
-    "parentTraits": [
-      "6178f26523c29c21b201d769"
-    ],
-    "title": "(NEUTRALITY-NEGATIVITY) Too Much Work",
-    "traitType": "secondary",
-    "trait_definition": "Negativity or Neutrality vibe directly associated with the belief that this concept might or will be extra work, too much work, too hard, too many steps, or generally just too complicated.",
-    "trait_examples": "It doesn't save any time, maybe adds more | I can't imagine doing this all the time"
-  },
-  {
     "_id": "627d3afb4bcce8cde00dbdb4",
     "gcsFileName": "(FORESIGHT-NICHE) Special Occasion - Event.h5",
     "contextPromptEnabled": true,
@@ -971,42 +688,6 @@ const traits = [
     "traitType": "secondary",
     "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived good for social gatherings such as family dinners or gatherings with friends, parties, socializing.",
     "trait_examples": "Something I would definitely drink at a bbq with girlfriends! | I believe it would be a good bonding time with family / friends. | I like the ideas of fruits alcoholic beverages they are perfect for the summer and backyard parties."
-  },
-  {
-    "_id": "627d48754bcce8cde00dbdc2",
-    "gcsFileName": "(FORESIGHT) Enticing.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767"
-    ],
-    "title": "(FORESIGHT) Enticing",
-    "traitType": "secondary",
-    "trait_definition": "Foresight directly associated with anticipation about how the product could feel, taste, smell, or be experienced.",
-    "trait_examples": "This Chai is wonderful and delicious! It's so fragrant and really good tea. | Nice and exotic option. Refreshing Mexican experience with a strong flavor. | Sounds like a healthy and refreshing idea. | It looks delicious and healthy and has good flavors."
-  },
-  {
-    "_id": "627d48e54bcce8cde00dbdc4",
-    "gcsFileName": "(FORESIGHT-NICHE) Dietary Issues - Special Diets.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Dietary Issues - Special Diets",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived to be useful for someone has dietary issues/restrictions or for special diets.",
-    "trait_examples": "I like this product since I can't have dairy. | Vegan options are always a good thing and if they taste good, non-vegans will also buy. | I think it would also benefit the hose that consider themselves vegetarian or vegan. | Sounds delicious, I am on KETO diet."
   },
   {
     "_id": "62822026793707eaf32b23fb",
@@ -1236,42 +917,6 @@ const traits = [
     "trait_examples": "I don't understand the live cultures part. Sounds gross in my mouth! | Ugh. I've had dairy free yogurt - not good."
   },
   {
-    "_id": "6178f26523c29c21b201d755",
-    "gcsFileName": "(FORESIGHT-NICHE) Kids.h5",
-    "contextPromptEnabled": true,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d767",
-      "6178f26523c29c21b201d76c",
-      "62822026793707eaf32b23fb"
-    ],
-    "title": "(FORESIGHT-NICHE) Kids",
-    "traitType": "secondary",
-    "trait_definition": "Foresight and/or Niche vibe directly associated with the concept perceived as good for kids, parents, teens, etc.",
-    "trait_examples": "I think I would love for my children to try this product. I believe they would enjoy it. | That sounds like a great idea for big families or people with children. | It would be fun for a family night with kids"
-  },
-  {
-    "_id": "6178f26523c29c21b201d759",
-    "gcsFileName": "(INTUITIVE) Flavor Appeal.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "positive",
-    "parentTraits": [
-      "6178f26523c29c21b201d768"
-    ],
-    "title": "(INTUITIVE) Flavor Appeal",
-    "traitType": "secondary",
-    "trait_definition": "Intuitive vibe directly associated with the specific flavors offered or the flavors in general.",
-    "trait_examples": "It's dairy free and has a good selection of flavors | I would be willing to try it, especially the mixed berry | I think it will be successful because of the flavors such as pineapple mango and other flavors."
-  },
-  {
     "_id": "6178f26523c29c21b201d75b",
     "gcsFileName": "(INTUITIVE) Makes Life Easier.h5",
     "contextPromptEnabled": false,
@@ -1337,21 +982,7 @@ const traits = [
     "trait_definition": "Bust Vibe is an explicit or implied belief that the concept is a bad idea, that the concept will not do well or succeed, or is overwhelmingly unappealing with no viable suggestions for improvement.",
     "trait_examples": ""
   },
-  {
-    "_id": "6178f26523c29c21b201d76c",
-    "gcsFileName": "Niche.h5",
-    "contextPromptEnabled": false,
-    "initialReactionEnabled": true,
-    "expandedView": false,
-    "hideThemeTag": false,
-    "__v": 0,
-    "color": "fixable",
-    "title": "Niche (Initial)",
-    "traitType": "primary",
-    "parentTraits": [],
-    "trait_definition": "Niche vibe can be present in Initial Reaction and/or Context Prompt. A comment that expresses or implies that an idea will appeal to an explicit subset of the entire universe of potential consumers.",
-    "trait_examples": "Kids would like it as a snack on the way to sporting events or travelling somewhere. | Peppermint is perfect for the holidays and the pecan pumpkin is definitely a fall flavor. | Health conscious, diabetics, or anyone who wants a healthy treat"
-  },
+
   // {
   //   "_id": "6178f26523c29c21b201d770",
   //   "gcsFileName": "Pointless.h5",

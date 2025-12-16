@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
 
 // WebSocket server with ping/pong to keep connections alive
-const wss = new WebSocket.Server({ 
+const wss = new WebSocket.Server({
   server,
   clientTracking: true,
   perMessageDeflate: false
@@ -78,7 +78,7 @@ const pingInterval = setInterval(() => {
       console.log('⚠️ Terminating dead WebSocket connection');
       return ws.terminate();
     }
-    
+
     ws.isAlive = false;
     try {
       ws.ping();
@@ -100,7 +100,7 @@ function broadcastUpdate(data) {
   const message = JSON.stringify(data);
   let sentCount = 0;
   let errorCount = 0;
-  
+
   clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       try {
@@ -117,7 +117,7 @@ function broadcastUpdate(data) {
       clients.delete(client);
     }
   });
-  
+
   if (sentCount > 0) {
     console.log(`📤 Broadcasted to ${sentCount} client(s)`);
   }
@@ -162,10 +162,17 @@ app.get('/api/hello', (req, res) => {
 
 // Get all traits
 app.get('/api/traits', (req, res) => {
+  const simplifiedTraits = traits.map(trait => ({
+    title: trait.title,
+    traitType: trait.traitType,
+    contextPromptEnabled: trait.contextPromptEnabled,
+    initialReactionEnabled: trait.initialReactionEnabled
+  }));
+
   res.json({
     success: true,
-    count: traits.length,
-    data: traits
+    count: simplifiedTraits.length,
+    data: simplifiedTraits
   });
 });
 
@@ -249,7 +256,7 @@ app.post('/api/traits/process', async (req, res) => {
 
     // Map csv_data and save to database
     const savedDocuments = [];
-    
+
     for (const item of csv_data) {
       // Prepare data structure for saving
       const traitData = {
@@ -274,13 +281,13 @@ app.post('/api/traits/process', async (req, res) => {
           reviewTags: []
           // type: 'CONTEXT_PROMPT' is default in schema
         };
-                
+
         const savedDoc = await Trait.create(traitData);
         savedDocuments.push({
           mongoId: savedDoc._id.toString(),
           type: 'INITIAL_REACTION'
         });
-        
+
         // Broadcast document created
         broadcastUpdate({
           type: 'document_created',
@@ -297,7 +304,7 @@ app.post('/api/traits/process', async (req, res) => {
         });
       }
 
-   
+
     }
 
 
@@ -340,7 +347,7 @@ app.post('/api/traits/process', async (req, res) => {
               'INITIAL_REACTION'
             );
             console.log(`✅ Queued INITIAL_REACTION task for ${model.title}`);
-            
+
             // Broadcast task queued
             broadcastUpdate({
               type: 'task_queued',
@@ -368,7 +375,7 @@ app.post('/api/traits/process', async (req, res) => {
               'CONTEXT_PROMPT'
             );
             console.log(`✅ Queued CONTEXT_PROMPT task for ${model.title}`);
-            
+
             // Broadcast task queued
             broadcastUpdate({
               type: 'task_queued',
@@ -436,7 +443,7 @@ app.post('/api/traits/process', async (req, res) => {
 app.post('/trait-prediction', async (req, res) => {
   try {
     const { data, model_filename, project_id, type } = req.body;
-    
+
     // Validate required fields
     if (!data || !Array.isArray(data)) {
       return res.status(400).json({
@@ -482,7 +489,7 @@ app.post('/trait-prediction', async (req, res) => {
 
         // Find document by MongoDB ID
         let traitDoc = await Trait.findById(ID);
-        
+
         if (!traitDoc) {
           errors.push({ item, error: `Document not found for ID: ${ID}` });
           continue;
@@ -491,7 +498,7 @@ app.post('/trait-prediction', async (req, res) => {
         // Get text from the appropriate object based on type
         let text;
         let targetObject;
-        
+
         if (type === 'INITIAL_REACTION') {
           if (!traitDoc.initial_reaction || !traitDoc.initial_reaction.text) {
             errors.push({ item, error: `Initial reaction text not found for ID: ${ID}` });
@@ -592,7 +599,7 @@ app.post('/trait-prediction', async (req, res) => {
 
         // Save the document
         const savedTrait = await traitDoc.save();
-        
+
         // Only add to savedTraits once per unique ID
         if (!processedIds.has(ID)) {
           savedTraits.push(savedTrait);
@@ -601,7 +608,7 @@ app.post('/trait-prediction', async (req, res) => {
 
         // Determine what happened (trait added, removed, or no change)
         const traitChanged = (finalScore === 1 && !hasTrait) || (finalScore === 0 && hasTrait);
-        const eventType = traitChanged 
+        const eventType = traitChanged
           ? (finalScore === 1 ? 'trait_added' : 'trait_removed')
           : 'trait_updated';
 
@@ -693,8 +700,8 @@ app.post('/api/traits/feedback', async (req, res) => {
     }
 
     const targetType = type === 'INITIAL_REACTION' ? 'initial_reaction'
-                    : type === 'CONTEXT_PROMPT' ? 'context_prompt'
-                    : null;
+      : type === 'CONTEXT_PROMPT' ? 'context_prompt'
+        : null;
 
     if (!targetType) {
       return res.status(400).json({ success: false, error: 'type must be INITIAL_REACTION or CONTEXT_PROMPT' });
@@ -878,7 +885,7 @@ app.get('/api/traits/db/stats', async (req, res) => {
     // Get unique trait names
     const traitNames = await Trait.distinct('traits');
     const traitCounts = {};
-    
+
     for (const traitName of traitNames) {
       if (traitName) {
         traitCounts[traitName] = await Trait.countDocuments({ traits: { $in: [traitName] } });
@@ -910,9 +917,9 @@ app.get('/api/traits/db/stats', async (req, res) => {
 app.delete('/api/traits/db', async (req, res) => {
   try {
     const result = await Trait.deleteMany({});
-    
+
     console.log(`🗑️  Deleted ${result.deletedCount} trait document(s) from database`);
-    
+
     res.json({
       success: true,
       message: 'All traits deleted successfully',
@@ -943,7 +950,7 @@ async function startServer() {
   try {
     // Connect to MongoDB
     await database.connect();
-    
+
     // Start HTTP and WebSocket server
     server.listen(PORT, () => {
       console.log(`Server is running on ${PORT}`);

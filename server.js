@@ -520,6 +520,17 @@ app.post('/trait-prediction', async (req, res) => {
 
         const llmScore = commentPrediction; // 0 or 1
 
+        // Determine version and inputs from document
+        let versionToPass = 'basic';
+        let projectInput = '';
+        let conceptInput = '';
+
+        if (traitDoc.version === 'context') {
+          versionToPass = 'context';
+          projectInput = traitDoc.project_input || '';
+          conceptInput = traitDoc.concept_input || '';
+        }
+
         // Call GenAI API
         console.log(`🔍 Calling GenAI for ID: ${ID}, trait: ${traitTitle}, type: ${type}`);
         const genAiResult = await genAiService.classify(
@@ -527,7 +538,9 @@ app.post('/trait-prediction', async (req, res) => {
           traitTitle,
           traitDefinition,
           traitExamples,
-          'basic'
+          versionToPass,
+          projectInput,
+          conceptInput
         );
 
         if (!genAiResult.success) {

@@ -20,20 +20,22 @@ class GenAiService {
    * @param {string} version - API version (default: 'basic')
    * @returns {Promise<Object>} GenAI response
    */
-  async classify(text, traitTitle, traitDefinition, traitExamples, version = 'basic') {
+  async classify(text, traitTitle, traitDefinition, traitExamples, version = 'basic', projectInput = '', conceptInput = '') {
     try {
       const payload = {
         text,
         trait: traitTitle,
         trait_definition: traitDefinition,
         trait_examples: traitExamples,
-        version
+        version,
+        project_input: projectInput,
+        concept_input: conceptInput
       };
       const response = await axios.post(this.apiUrl, payload, {
         headers: {
           'Content-Type': 'application/json'
         },
-        timeout: 60000 // 60 seconds timeout
+        timeout: 300000 // 5 minutes timeout
       });
 
       return {

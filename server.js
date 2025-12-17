@@ -10,6 +10,20 @@ const GCloudService = require('./gcloudService');
 const Trait = require('./models/Trait');
 const genAiService = require('./services/genAiService');
 
+// Request Queue for handling GenAI API calls sequentially
+class RequestQueue {
+  constructor() {
+    this.queue = Promise.resolve();
+  }
+
+  add(operation) {
+    this.queue = this.queue.then(operation, operation);
+    return this.queue;
+  }
+}
+
+const genAiQueue = new RequestQueue();
+
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
@@ -531,17 +545,27 @@ app.post('/trait-prediction', async (req, res) => {
           conceptInput = traitDoc.concept_input || '';
         }
 
-        // Call GenAI API
-        console.log(`🔍 Calling GenAI for ID: ${ID}, trait: ${traitTitle}, type: ${type}`);
-        const genAiResult = await genAiService.classify(
-          text,
-          traitTitle,
-          traitDefinition,
-          traitExamples,
-          versionToPass,
-          projectInput,
-          conceptInput
-        );
+
+        // Call GenAI API with Global Queue to prevent socket hang up
+        console.log(`🔍 Queuing GenAI request for ID: ${ID}, trait: ${traitTitle}`);
+
+        // Add request to the global queue
+        const genAiResult = await genAiQueue.add(async () => {
+          console.log(`🚀 Processing GenAI request for ID: ${ID}`);
+
+          // Add a small delay (e.g., 500ms) to ensure connection stability between requests
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          return await genAiService.classify(
+            text,
+            traitTitle,
+            traitDefinition,
+            traitExamples,
+            versionToPass,
+            projectInput,
+            conceptInput
+          );
+        });
 
         if (!genAiResult.success) {
           console.error(`❌ GenAI API failed for ID: ${ID}`, genAiResult.error);

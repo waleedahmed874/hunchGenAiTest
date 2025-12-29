@@ -461,7 +461,6 @@ app.post('/trait-prediction', async (req, res) => {
     if (!data || !Array.isArray(data)) {
       return res.status(400).json({ success: false, error: 'Data must be an array' });
     }
-
     if (!model_filename || !type) {
       return res.status(400).json({ success: false, error: 'model_filename and type required' });
     }
@@ -568,6 +567,66 @@ app.post('/api/traits/feedback', async (req, res) => {
   } catch (error) {
     console.error('Error adding feedback:', error);
     return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Store manual feedback based on type
+// Body: { traitName, feedback, documentId, type }
+app.post('/api/traits/store-feedback', async (req, res) => {
+  try {
+    const { traitName, feedback, documentId, type } = req.body;
+
+    if (!traitName || !feedback || !documentId || !type) {
+      return res.status(400).json({
+        success: false,
+        error: 'traitName, feedback, documentId, and type are required'
+      });
+    }
+
+    const doc = await Trait.findById(documentId);
+    if (!doc) {
+      return res.status(404).json({
+        success: false,
+        error: 'Document not found'
+      });
+    }
+
+    let targetObject;
+    if (type === 'INITIAL_REACTION') {
+      targetObject = doc.initial_reaction;
+    } else if (type === 'CONTEXT_PROMPT') {
+      targetObject = doc.context_prompt;
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid type. Must be INITIAL_REACTION or CONTEXT_PROMPT'
+      });
+    }
+
+    // feedback is an array in the schema
+    if (!targetObject.feedback) {
+      targetObject.feedback = [];
+    }
+
+    targetObject.feedback.push({
+      trait: traitName,
+      text: feedback
+    });
+
+    await doc.save();
+
+    res.json({
+      success: true,
+      message: 'Feedback stored successfully',
+      data: targetObject.feedback
+    });
+
+  } catch (error) {
+    console.error('Error storing feedback:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 // Get all trait documents from database

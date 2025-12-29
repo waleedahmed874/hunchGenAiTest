@@ -28,7 +28,16 @@ const traitSchema = new mongoose.Schema(
         type: String,
         default: ''
       },
-      
+      feedback: {
+        type: [
+          {
+            trait: String,
+            text: String,
+
+          }
+        ]
+      },
+
       traits: {
         type: [String],
         default: []
@@ -89,6 +98,15 @@ const traitSchema = new mongoose.Schema(
       traits: {
         type: [String],
         default: []
+      },
+      feedback: {
+        type: [
+          {
+            trait: String,
+            text: String,
+
+          }
+        ]
       },
       genAiRecords: {
         type: [{
@@ -151,7 +169,7 @@ traitSchema.index({ 'context_prompt._id': 1 });
 traitSchema.index({ version: 1, createdAt: -1 });
 
 // Instance method to add a trait
-traitSchema.methods.addTrait = function(trait) {
+traitSchema.methods.addTrait = function (trait) {
   if (!this.traits.includes(trait)) {
     this.traits.push(trait);
   }
@@ -159,18 +177,18 @@ traitSchema.methods.addTrait = function(trait) {
 };
 
 // Instance method to remove a trait
-traitSchema.methods.removeTrait = function(trait) {
+traitSchema.methods.removeTrait = function (trait) {
   this.traits = this.traits.filter(t => t !== trait);
   return this;
 };
 
 // Static method to find by type
-traitSchema.statics.findByType = function(type) {
+traitSchema.statics.findByType = function (type) {
   return this.find({ type });
 };
 
 // Static method to find by trait name
-traitSchema.statics.findByTrait = function(traitName) {
+traitSchema.statics.findByTrait = function (traitName) {
   return this.find({ traits: { $in: [traitName] } });
 };
 

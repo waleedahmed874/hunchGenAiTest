@@ -574,7 +574,7 @@ app.post('/api/traits/feedback', async (req, res) => {
 // Body: { traitName, feedback, documentId, type }
 app.post('/api/traits/store-feedback', async (req, res) => {
   try {
-    const { traitName, feedback, documentId, type } = req.body;
+    const { traitName, feedback, documentId, type,shouldExist } = req.body;
 
     if (!traitName || !feedback || !documentId || !type) {
       return res.status(400).json({
@@ -610,7 +610,8 @@ app.post('/api/traits/store-feedback', async (req, res) => {
 
     targetObject.feedback.push({
       trait: traitName,
-      text: feedback
+      text: feedback,
+      shouldExist: shouldExist
     });
 
     await doc.save();

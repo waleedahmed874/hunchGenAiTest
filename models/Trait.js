@@ -33,6 +33,7 @@ const traitSchema = new mongoose.Schema(
           {
             trait: String,
             text: String,
+            shouldExist: Boolean,
 
           }
         ]
@@ -104,6 +105,7 @@ const traitSchema = new mongoose.Schema(
           {
             trait: String,
             text: String,
+            shouldExist: Boolean,
 
           }
         ]

@@ -574,52 +574,112 @@ app.post('/api/traits/feedback', async (req, res) => {
 // Body: { traitName, feedback, documentId, type }
 app.post('/api/traits/store-feedback', async (req, res) => {
   try {
-    const { traitName, feedback, documentId, type,shouldExist } = req.body;
+    const { feedbackArray } = req.body;
 
-    if (!traitName || !feedback || !documentId || !type) {
+    // Support both array format and single item format (backward compatibility)
+    let items = [];
+    if (feedbackArray && Array.isArray(feedbackArray)) {
+      items = feedbackArray;
+    } else if (req.body.traitName && req.body.documentId) {
+      // Single item format (backward compatibility)
+      items = [req.body];
+    } else {
       return res.status(400).json({
         success: false,
-        error: 'traitName, feedback, documentId, and type are required'
+        error: 'feedbackArray (array) or single feedback item (traitName, feedback, documentId, type) is required'
       });
     }
 
+    if (items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one feedback item is required'
+      });
+    }
+
+    // Get documentId from first item
+    const firstItem = items[0];
+    const documentId = firstItem.documentId;
+
+    if (!documentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'documentId is required in feedback items'
+      });
+    }
+
+    // Find document once
     const doc = await Trait.findById(documentId);
     if (!doc) {
       return res.status(404).json({
         success: false,
-        error: 'Document not found'
+        error: `Document not found for ID: ${documentId}`
       });
     }
 
-    let targetObject;
-    if (type === 'INITIAL_REACTION') {
-      targetObject = doc.initial_reaction;
-    } else if (type === 'CONTEXT_PROMPT') {
-      targetObject = doc.context_prompt;
-    } else {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid type. Must be INITIAL_REACTION or CONTEXT_PROMPT'
+    // Process all items and group by type
+    const feedbackByType = {
+      INITIAL_REACTION: [],
+      CONTEXT_PROMPT: []
+    };
+
+    for (const item of items) {
+      const { traitName, feedback, type, shouldExist } = item;
+
+      if (!traitName || !feedback || !type) {
+        console.warn('Skipping invalid item:', item);
+        continue;
+      }
+
+      if (type !== 'INITIAL_REACTION' && type !== 'CONTEXT_PROMPT') {
+        console.warn('Skipping item with invalid type:', item);
+        continue;
+      }
+
+      feedbackByType[type].push({
+        trait: traitName,
+        text: feedback,
+        shouldExist: shouldExist !== undefined ? shouldExist : true
       });
     }
 
-    // feedback is an array in the schema
-    if (!targetObject.feedback) {
-      targetObject.feedback = [];
+    // Add feedback to appropriate target objects
+    let addedCount = 0;
+
+    if (feedbackByType.INITIAL_REACTION.length > 0) {
+      if (!doc.initial_reaction) {
+        doc.initial_reaction = { feedback: [] };
+      }
+      if (!doc.initial_reaction.feedback) {
+        doc.initial_reaction.feedback = [];
+      }
+      doc.initial_reaction.feedback.push(...feedbackByType.INITIAL_REACTION);
+      addedCount += feedbackByType.INITIAL_REACTION.length;
     }
 
-    targetObject.feedback.push({
-      trait: traitName,
-      text: feedback,
-      shouldExist: shouldExist
-    });
+    if (feedbackByType.CONTEXT_PROMPT.length > 0) {
+      if (!doc.context_prompt) {
+        doc.context_prompt = { feedback: [] };
+      }
+      if (!doc.context_prompt.feedback) {
+        doc.context_prompt.feedback = [];
+      }
+      doc.context_prompt.feedback.push(...feedbackByType.CONTEXT_PROMPT);
+      addedCount += feedbackByType.CONTEXT_PROMPT.length;
+    }
 
+    // Save once
     await doc.save();
 
     res.json({
       success: true,
       message: 'Feedback stored successfully',
-      data: targetObject.feedback
+      added: addedCount,
+      total: items.length,
+      data: {
+        initial_reaction: doc.initial_reaction?.feedback || [],
+        context_prompt: doc.context_prompt?.feedback || []
+      }
     });
 
   } catch (error) {

@@ -11,6 +11,10 @@ const traitSchema = new mongoose.Schema(
       type: String,
       index: true
     },
+    processed: {
+      type: Boolean,
+      default: false
+    },
     concept_input: {
       type: String,
       default: ''

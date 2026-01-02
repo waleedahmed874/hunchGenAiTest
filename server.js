@@ -319,8 +319,7 @@ app.post('/api/traits/process', async (req, res) => {
 
     // Fetch saved documents from database
     const allSavedDocs = await Trait.find({
-      project_input: project_input || projectId,
-      version: versionLower
+      processed: false
     }).lean();
 
     // Separate initial_reaction and context_prompt data
@@ -981,6 +980,7 @@ async function processTraitPrediction(body) {
       if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
         targetObject.reviewTags.push(traitTitle);
       }
+      traitDoc.processed = true;
 
       const saved = await traitDoc.save();
 

@@ -9,10 +9,17 @@ const traitSchema = new mongoose.Schema(
     // Main fields
     project_input: {
       type: String,
-      required: true,
       index: true
     },
     concept_input: {
+      type: String,
+      default: ''
+    },
+    hunch_id: {
+      type: String,
+      default: ''
+    },
+    concept_name: {
       type: String,
       default: ''
     },

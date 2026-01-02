@@ -255,18 +255,9 @@ app.post('/api/traits/process', async (req, res) => {
       }
     }
 
-    const projectId = project_input || "691f0de3cde91b17bbb84746";
+    const projectId = "691f0de3cde91b17bbb84746";
 
-    // Broadcast processing start
-    broadcastUpdate({
-      type: 'processing_started',
-      message: 'Trait processing started',
-      totalItems: csv_data.length,
-      version: versionLower,
-      project_input: project_input || projectId,
-      concept_input: concept_input || '',
-      timestamp: new Date().toISOString()
-    });
+
 
     // Map csv_data and save to database
     const savedDocuments = [];
@@ -274,9 +265,11 @@ app.post('/api/traits/process', async (req, res) => {
     for (const item of csv_data) {
       // Prepare data structure for saving
       const traitData = {
-        project_input: project_input || projectId,
+        project_input: project_input || '',
         concept_input: concept_input || '',
-        version: versionLower
+        version: versionLower,
+        hunch_id: item.hunch_id,
+        concept_name: item.concept_name
       };
 
       // Save initial_reaction if exists
@@ -312,7 +305,9 @@ app.post('/api/traits/process', async (req, res) => {
             concept_input: savedDoc.concept_input,
             version: savedDoc.version,
             initial_reaction: savedDoc.initial_reaction,
-            context_prompt: savedDoc.context_prompt
+            context_prompt: savedDoc.context_prompt,
+            hunch_id: savedDoc.hunch_id,
+            concept_name: savedDoc.concept_name
           },
           timestamp: new Date().toISOString()
         });
@@ -349,7 +344,7 @@ app.post('/api/traits/process', async (req, res) => {
     const initialReactionTraits = traits.filter(trait => trait.initialReactionEnabled);
     const contextPromptTraits = traits.filter(trait => trait.contextPromptEnabled);
 
-    // First: Queue initial_reaction data
+    //    First: Queue initial_reaction data
     if (initialReactionData.length > 0 && initialReactionTraits.length > 0) {
       for (const model of initialReactionTraits) {
         try {
@@ -361,15 +356,6 @@ app.post('/api/traits/process', async (req, res) => {
               'INITIAL_REACTION'
             );
             console.log(`✅ Queued INITIAL_REACTION task for ${model.title}`);
-
-            // Broadcast task queued
-            broadcastUpdate({
-              type: 'task_queued',
-              traitTitle: model.title,
-              type: 'INITIAL_REACTION',
-              dataCount: initialReactionData.length,
-              timestamp: new Date().toISOString()
-            });
           }
         } catch (error) {
           console.error(`Error queuing INITIAL_REACTION task for ${model.title}:`, error);
@@ -377,7 +363,7 @@ app.post('/api/traits/process', async (req, res) => {
       }
     }
 
-    // Then: Queue context_prompt data
+    // // Then: Queue context_prompt data
     if (contextPromptData.length > 0 && contextPromptTraits.length > 0) {
       for (const model of contextPromptTraits) {
         try {
@@ -391,31 +377,12 @@ app.post('/api/traits/process', async (req, res) => {
             console.log(`✅ Queued CONTEXT_PROMPT task for ${model.title}`);
 
             // Broadcast task queued
-            broadcastUpdate({
-              type: 'task_queued',
-              traitTitle: model.title,
-              type: 'CONTEXT_PROMPT',
-              dataCount: contextPromptData.length,
-              timestamp: new Date().toISOString()
-            });
           }
         } catch (error) {
           console.error(`Error queuing CONTEXT_PROMPT task for ${model.title}:`, error);
         }
       }
     }
-
-    // Broadcast processing completed
-    broadcastUpdate({
-      type: 'processing_completed',
-      message: 'Trait processing completed',
-      savedDocuments: savedDocuments.length,
-      queuedTasks: {
-        initialReaction: initialReactionData.length > 0 ? initialReactionTraits.length : 0,
-        contextPrompt: contextPromptData.length > 0 ? contextPromptTraits.length : 0
-      },
-      timestamp: new Date().toISOString()
-    });
 
     // Use already fetched documents for response
     res.json({
@@ -428,6 +395,8 @@ app.post('/api/traits/process', async (req, res) => {
         version: doc.version,
         initial_reaction: doc.initial_reaction,
         context_prompt: doc.context_prompt,
+        hunch_id: doc.hunch_id,
+        concept_name: doc.concept_name,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt
       })),
@@ -452,6 +421,7 @@ app.post('/api/traits/process', async (req, res) => {
     });
   }
 });
+
 
 // Trait prediction callback endpoint
 app.post('/trait-prediction', async (req, res) => {

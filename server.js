@@ -985,19 +985,23 @@ async function processTraitPrediction(body) {
       const saved = await traitDoc.save();
 
       // ✅ socket emit SAFE here
-      broadcastUpdate({
-        type: finalScore === 1 ? 'trait_added' : 'trait_updated',
-        documentId: ID,
-        document: saved,
-        traitTitle,
-        traitType: type,
-        llmScore,
-        genAiScore,
-        finalScore,
-        action,
-        needsReview,
-        timestamp: new Date().toISOString()
-      });
+      try {
+        broadcastUpdate({
+          type: finalScore === 1 ? 'trait_added' : 'trait_updated',
+          documentId: ID,
+          document: saved,
+          traitTitle,
+          traitType: type,
+          llmScore,
+          genAiScore,
+          finalScore,
+          action,
+          needsReview,
+          timestamp: new Date().toISOString()
+        });
+      } catch (socketError) {
+        console.warn('⚠️ Socket broadcast failed (skipping):', socketError.message);
+      }
 
       console.log(`✅ DONE | ID=${ID} | Final=${finalScore}`);
 

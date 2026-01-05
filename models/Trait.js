@@ -11,11 +11,6 @@ const traitSchema = new mongoose.Schema(
       type: String,
       index: true
     },
-    status: {
-      type: String,
-      enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'FAILED'],
-      default: 'PENDING'
-    },
     processed: {
       type: Boolean,
       default: false

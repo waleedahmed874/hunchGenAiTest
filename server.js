@@ -10,40 +10,24 @@ const GCloudService = require('./gcloudService');
 const Trait = require('./models/Trait');
 const genAiService = require('./services/genAiService');
 
-// Concurrency Controller for parallel processing with limit
-class ConcurrencyController {
-  constructor(limit = 5) {
-    this.limit = limit;
-    this.running = 0;
-    this.queue = [];
+// Request Queue for handling GenAI API calls sequentially
+class RequestQueue {
+  constructor() {
+    this.queue = Promise.resolve();
   }
 
-  async run(fn) {
-    while (this.running >= this.limit) {
-      await new Promise(resolve => this.queue.push(resolve));
-    }
-    this.running++;
-    try {
-      return await fn();
-    } finally {
-      this.running--;
-      const resolve = this.queue.shift();
-      if (resolve) resolve();
-    }
+  add(operation) {
+    this.queue = this.queue.then(operation, operation);
+    return this.queue;
   }
 }
 
-// Get concurrency limit from environment or default to 5
-const CONCURRENCY_LIMIT = parseInt(process.env.GENAI_CONCURRENCY_LIMIT || '5', 10);
-const genAiConcurrency = new ConcurrencyController(CONCURRENCY_LIMIT);
+const genAiQueue = new RequestQueue();
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
-
-// Track if server is shutting down (for Cloud Run graceful shutdown)
-let isShuttingDown = false;
 
 // WebSocket server with ping/pong to keep connections alive
 const wss = new WebSocket.Server({
@@ -62,62 +46,29 @@ wss.on('connection', (ws, req) => {
 
   // Mark connection as alive
   ws.isAlive = true;
-  ws.lastPong = Date.now();
 
-  // Set connection timeout (30 seconds)
-  const connectionTimeout = setTimeout(() => {
-    if (ws.isAlive === false) {
-      console.log('⚠️ Connection timeout, terminating');
-      ws.terminate();
-    }
-  }, 30000);
-
-  // Send welcome message (with error handling)
-  try {
-    ws.send(JSON.stringify({
-      type: 'connected',
-      message: 'WebSocket connection established',
-      timestamp: new Date().toISOString()
-    }), (err) => {
-      if (err) {
-        console.error('Error sending welcome message:', err);
-        clients.delete(ws);
-      }
-    });
-  } catch (error) {
-    console.error('Error in welcome message:', error);
-    clients.delete(ws);
-    return;
-  }
+  // Send welcome message
+  ws.send(JSON.stringify({
+    type: 'connected',
+    message: 'WebSocket connection established',
+    timestamp: new Date().toISOString()
+  }));
 
   // Handle pong response (client is alive)
   ws.on('pong', () => {
     ws.isAlive = true;
-    ws.lastPong = Date.now();
   });
 
   // Handle client disconnect
   ws.on('close', (code, reason) => {
-    clearTimeout(connectionTimeout);
-    // Only log if not a normal closure
-    if (code !== 1000 && code !== 1001) {
-      console.log(`❌ WebSocket client disconnected (code: ${code}, reason: ${reason?.toString() || 'none'})`);
-    }
+    console.log(`❌ WebSocket client disconnected (code: ${code}, reason: ${reason || 'none'})`);
     clients.delete(ws);
   });
 
   // Handle errors
   ws.on('error', (error) => {
-    clearTimeout(connectionTimeout);
-    console.error('WebSocket error:', error.message || error);
+    console.error('WebSocket error:', error);
     clients.delete(ws);
-    try {
-      if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
-        ws.terminate();
-      }
-    } catch (err) {
-      // Ignore cleanup errors
-    }
   });
 
   // Handle incoming messages (if needed)
@@ -126,11 +77,7 @@ wss.on('connection', (ws, req) => {
       const data = JSON.parse(message);
       // Handle client messages if needed
       if (data.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }), (err) => {
-          if (err) {
-            console.error('Error sending pong:', err);
-          }
-        });
+        ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
       }
     } catch (error) {
       console.error('Error parsing WebSocket message:', error);
@@ -140,227 +87,56 @@ wss.on('connection', (ws, req) => {
 
 // Ping all clients every 30 seconds to keep connections alive
 const pingInterval = setInterval(() => {
-  const now = Date.now();
   wss.clients.forEach((ws) => {
-    // Check if connection hasn't responded to pong in 60 seconds (more lenient)
-    if (ws.lastPong && (now - ws.lastPong) > 60000) {
-      console.log('⚠️ Terminating dead WebSocket connection (no pong for 60s)');
-      try {
-        ws.terminate();
-      } catch (err) {
-        // Ignore
-      }
-      clients.delete(ws);
-      return;
+    if (ws.isAlive === false) {
+      console.log('⚠️ Terminating dead WebSocket connection');
+      return ws.terminate();
     }
 
-    // Mark as not alive, wait for pong
     ws.isAlive = false;
     try {
       ws.ping();
     } catch (error) {
       console.error('Error pinging WebSocket client:', error);
       clients.delete(ws);
-      try {
-        if (ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
-          ws.terminate();
-        }
-      } catch (err) {
-        // Ignore cleanup errors
-      }
     }
   });
 }, 30000);
 
-// Graceful shutdown handler for Cloud Run (SIGTERM) and local (SIGINT)
-async function gracefulShutdown(signal) {
-  console.log(`\n⚠️ ${signal} signal received. Starting graceful shutdown...`);
-  isShuttingDown = true;
-
-  // Stop accepting new requests (give 10 seconds to finish existing)
-  const shutdownTimeout = setTimeout(() => {
-    console.log('⏱️ Shutdown timeout reached, forcing exit...');
-    process.exit(1);
-  }, 10000);
-
-  try {
-    // Clear ping interval
-    clearInterval(pingInterval);
-    
-    // Flush any remaining broadcasts
-    if (broadcastTimer) {
-      clearTimeout(broadcastTimer);
-    }
-    if (broadcastQueue.length > 0) {
-      console.log(`📤 Flushing ${broadcastQueue.length} queued broadcasts...`);
-      flushBroadcastQueue();
-    }
-
-    // Close WebSocket connections gracefully
-    console.log(`🔌 Closing ${clients.size} WebSocket connection(s)...`);
-    clients.forEach(client => {
-      try {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: 'server_shutdown',
-            message: 'Server is shutting down',
-            timestamp: new Date().toISOString()
-          }), () => {
-            client.close(1000, 'Server shutdown');
-          });
-        } else {
-          client.terminate();
-        }
-      } catch (err) {
-        client.terminate();
-      }
-    });
-
-    // Close WebSocket server
-    wss.close(() => {
-      console.log('✅ WebSocket server closed');
-    });
-
-    // Close HTTP server
-    server.close(() => {
-      console.log('✅ HTTP server closed');
-    });
-
-    // Close database connection
-    await database.disconnect();
-    console.log('✅ Database connection closed');
-
-    clearTimeout(shutdownTimeout);
-    console.log('✅ Graceful shutdown completed');
-    process.exit(0);
-  } catch (error) {
-    console.error('❌ Error during shutdown:', error);
-    clearTimeout(shutdownTimeout);
-    process.exit(1);
-  }
-}
-
-// Handle Cloud Run SIGTERM (graceful shutdown request)
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
-// Handle SIGINT (Ctrl+C for local development)
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-// Handle uncaught errors
-process.on('uncaughtException', (error) => {
-  console.error('💥 Uncaught Exception:', error);
-  gracefulShutdown('UNCAUGHT_EXCEPTION');
+// Clean up interval on server shutdown
+process.on('SIGINT', () => {
+  clearInterval(pingInterval);
+  wss.close();
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit on unhandled rejection, just log it
-});
-
-// Broadcast queue for batching updates to prevent WebSocket overload
-const broadcastQueue = [];
-let broadcastTimer = null;
-const BROADCAST_BATCH_INTERVAL = 500; // 500ms batching window
-const BROADCAST_MAX_BATCH_SIZE = 50; // Max updates per batch
-
-// Helper function to broadcast to all connected clients (with batching)
+// Helper function to broadcast to all connected clients
 function broadcastUpdate(data) {
-  // Add to queue
-  broadcastQueue.push(data);
-
-  // Start timer if not already running
-  if (!broadcastTimer) {
-    broadcastTimer = setTimeout(() => {
-      flushBroadcastQueue();
-    }, BROADCAST_BATCH_INTERVAL);
-  }
-
-  // Flush immediately if queue is too large
-  if (broadcastQueue.length >= BROADCAST_MAX_BATCH_SIZE) {
-    clearTimeout(broadcastTimer);
-    broadcastTimer = null;
-    flushBroadcastQueue();
-  }
-}
-
-// Flush broadcast queue and send batched updates
-function flushBroadcastQueue() {
-  if (broadcastQueue.length === 0) {
-    broadcastTimer = null;
-    return;
-  }
-
-  // Take all queued updates
-  const updates = broadcastQueue.splice(0, BROADCAST_MAX_BATCH_SIZE);
-  broadcastTimer = null;
-
-  // If single update, send as-is; otherwise batch
-  const payload = updates.length === 1
-    ? updates[0]
-    : {
-        type: 'batch_update',
-        count: updates.length,
-        updates: updates,
-        timestamp: new Date().toISOString()
-      };
-
-  const message = JSON.stringify(payload);
+  const message = JSON.stringify(data);
   let sentCount = 0;
   let errorCount = 0;
-  const deadClients = [];
 
   clients.forEach((client) => {
-    // Check connection health before sending
     if (client.readyState === WebSocket.OPEN) {
       try {
-        // Check if buffer is not too full (backpressure check)
-        if (client.bufferedAmount < 1024 * 1024) { // 1MB threshold
-          client.send(message, (err) => {
-            if (err) {
-              console.error('WebSocket send error:', err);
-              deadClients.push(client);
-            }
-          });
-          sentCount++;
-        } else {
-          console.warn('⚠️ Client buffer full, skipping send');
-          deadClients.push(client);
-        }
+        client.send(message);
+        sentCount++;
       } catch (error) {
         console.error('Error sending WebSocket message:', error);
         errorCount++;
-        deadClients.push(client);
+        // Remove dead connection
+        clients.delete(client);
       }
     } else {
       // Remove closed connections
-      deadClients.push(client);
-    }
-  });
-
-  // Clean up dead clients
-  deadClients.forEach(client => {
-    try {
       clients.delete(client);
-      if (client.readyState !== WebSocket.CLOSED && client.readyState !== WebSocket.CLOSING) {
-        client.terminate();
-      }
-    } catch (err) {
-      // Ignore cleanup errors
     }
   });
 
   if (sentCount > 0) {
-    console.log(`📤 Broadcasted ${updates.length} update(s) to ${sentCount} client(s)`);
+    console.log(`📤 Broadcasted to ${sentCount} client(s)`);
   }
-  if (errorCount > 0 || deadClients.length > 0) {
-    console.warn(`⚠️ Failed/removed ${errorCount + deadClients.length} client(s)`);
-  }
-
-  // If more items in queue, schedule next flush
-  if (broadcastQueue.length > 0) {
-    broadcastTimer = setTimeout(() => {
-      flushBroadcastQueue();
-    }, BROADCAST_BATCH_INTERVAL);
+  if (errorCount > 0) {
+    console.warn(`⚠️ Failed to send to ${errorCount} client(s)`);
   }
 }
 
@@ -567,7 +343,7 @@ app.post('/api/traits/process', async (req, res) => {
     const initialReactionTraits = traits.filter(trait => trait.initialReactionEnabled);
     const contextPromptTraits = traits.filter(trait => trait.contextPromptEnabled);
 
-    // First: Queue initial_reaction data
+    //    First: Queue initial_reaction data
     if (initialReactionData.length > 0 && initialReactionTraits.length > 0) {
       for (const model of initialReactionTraits) {
         try {
@@ -644,6 +420,7 @@ app.post('/api/traits/process', async (req, res) => {
     });
   }
 });
+
 
 // Trait prediction callback endpoint
 app.post('/trait-prediction', async (req, res) => {
@@ -1092,146 +869,25 @@ async function startServer() {
 
 // Start the application
 startServer();
-// Process single item in batch (parallel processing helper)
-async function processSingleItem(item, type, traitTitle, traitDefinition, traitExamples) {
-  try {
-    const { ID, commentPrediction } = item;
-    if (!ID) {
-      console.warn('⚠️ Item missing ID, skipping');
-      return { success: false, ID: null, reason: 'Missing ID' };
-    }
-
-    const traitDoc = await Trait.findById(ID);
-    if (!traitDoc) {
-      console.warn(`⚠️ Document not found: ${ID}`);
-      return { success: false, ID, reason: 'Document not found' };
-    }
-
-    let targetObject;
-    let text;
-
-    if (type === 'INITIAL_REACTION') {
-      targetObject = traitDoc.initial_reaction;
-    } else if (type === 'CONTEXT_PROMPT') {
-      targetObject = traitDoc.context_prompt;
-    } else {
-      return { success: false, ID, reason: 'Invalid type' };
-    }
-
-    if (!targetObject?.text) {
-      return { success: false, ID, reason: 'No text found' };
-    }
-    text = targetObject.text;
-
-    // version logic
-    let versionToPass = 'basic';
-    let projectInput = '';
-    let conceptInput = '';
-
-    if (traitDoc.version === 'context') {
-      versionToPass = 'context';
-      projectInput = traitDoc.project_input || '';
-      conceptInput = traitDoc.concept_input || '';
-    }
-
-    console.log(`🚀 GenAI start | ID=${ID} | Trait=${traitTitle}`);
-
-    // ✅ Use ConcurrencyController for parallel processing with limit
-    const genAiResult = await genAiConcurrency.run(async () => {
-      return genAiService.classify(
-        text,
-        traitTitle,
-        traitDefinition,
-        traitExamples,
-        versionToPass,
-        projectInput,
-        conceptInput
-      );
-    });
-
-    if (!genAiResult?.success) {
-      console.error(`❌ GenAI failed for ${ID}:`, genAiResult?.error);
-      return { success: false, ID, reason: 'GenAI API failed', error: genAiResult?.error };
-    }
-
-    const genAiResponse = genAiResult.data;
-    const llmScore = commentPrediction;
-    const genAiScore = genAiResponse.present ? 1 : 0;
-
-    const { action, finalScore } = genAiService.determineAction(llmScore, genAiResponse);
-    const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
-
-    // init arrays
-    targetObject.genAiRecords ||= [];
-    targetObject.traits ||= [];
-    targetObject.reviewTags ||= [];
-
-    const hasTrait = targetObject.traits.includes(traitTitle);
-
-    // record
-    const genAiRecord = {
-      llmScore,
-      genAiSays: {
-        present: genAiResponse.present,
-        confidence: genAiResponse.confidence,
-        rationale: genAiResponse.rationale,
-        score: genAiResponse.score
-      },
-      finalScore,
-      action,
-      traitTitle,
-      timestamp: new Date()
-    };
-
-    targetObject.genAiRecords.push(genAiRecord);
-
-    if (finalScore === 1 && !hasTrait) {
-      targetObject.traits.push(traitTitle);
-    } else if (finalScore === 0 && hasTrait) {
-      targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
-    }
-
-    if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
-      targetObject.reviewTags.push(traitTitle);
-    }
-      traitDoc.processed = true;
-
-    const saved = await traitDoc.save();
-
-    // ✅ Batched WebSocket broadcast
-    broadcastUpdate({
-      type: finalScore === 1 ? 'trait_added' : 'trait_updated',
-      documentId: ID,
-      document: saved,
-      traitTitle,
-      traitType: type,
-      llmScore,
-      genAiScore,
-      finalScore,
-      action,
-      needsReview,
-      timestamp: new Date().toISOString()
-    });
-
-    console.log(`✅ DONE | ID=${ID} | Trait=${traitTitle} | Final=${finalScore}`);
-    return { success: true, ID, finalScore, action };
-
-  } catch (err) {
-    console.error(`❌ Item processing failed (${item?.ID}):`, err.message || err);
-    return { success: false, ID: item?.ID, reason: 'Exception', error: err.message };
-  }
-}
-
-// Main batch processing function with parallel execution
 async function processTraitPrediction(body) {
-  const startTime = Date.now();
   const { data, model_filename, project_id, type } = body;
 
-  console.log(`📥 Processing batch: ${data?.length || 0} items | Model: ${model_filename} | Type: ${type}`);
+  const startTime = Date.now();
+  let processedCount = 0;
+  let successCount = 0;
+  let failedCount = 0;
 
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
   if (!matchedTrait) {
-    console.error(`❌ Trait not found for model: ${model_filename}`);
+    console.error(`Trait not found: ${model_filename}`);
+
+    // Broadcast error
+    broadcastUpdate({
+      type: 'trait_prediction_error',
+      error: `Trait not found: ${model_filename}`,
+      model_filename,
+      timestamp: new Date().toISOString()
+    });
     return;
   }
 
@@ -1241,51 +897,158 @@ async function processTraitPrediction(body) {
     trait_examples: traitExamples = ''
   } = matchedTrait;
 
-  // Broadcast batch processing start
-  broadcastUpdate({
-    type: 'batch_processing_started',
-    traitTitle,
-    traitType: type,
-    itemCount: data.length,
-    model: model_filename,
-    timestamp: new Date().toISOString()
-  });
+  // Process in batches of 5
+  const BATCH_SIZE = 5;
+  const totalBatches = Math.ceil(data.length / BATCH_SIZE);
 
-  // ✅ Process all items in parallel with Promise.allSettled
-  const results = await Promise.allSettled(
-    data.map(item => processSingleItem(item, type, traitTitle, traitDefinition, traitExamples))
-  );
+  for (let i = 0; i < data.length; i += BATCH_SIZE) {
+    const batch = data.slice(i, i + BATCH_SIZE);
+    const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+    console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} items)`);
 
-  // Calculate statistics
-  const succeeded = results.filter(r => r.status === 'fulfilled' && r.value?.success).length;
-  const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
-  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    // Process batch items in parallel
+    const results = await Promise.allSettled(batch.map(async (item) => {
+      try {
+        const { ID, commentPrediction } = item;
+        if (!ID) return { success: false, reason: 'No ID' };
 
-  console.log(`✅ Batch processing complete: ${succeeded} succeeded, ${failed} failed in ${duration}s`);
+        const traitDoc = await Trait.findById(ID);
+        if (!traitDoc) return { success: false, reason: 'Document not found' };
 
-  // Broadcast batch processing complete
-  broadcastUpdate({
-    type: 'batch_processing_completed',
-    traitTitle,
-    traitType: type,
-    itemCount: data.length,
-    succeeded,
-    failed,
-    duration: `${duration}s`,
-    timestamp: new Date().toISOString()
-  });
+        let targetObject;
+        let text;
 
-  // Log failed items for debugging
-  if (failed > 0) {
-    const failedItems = results
-      .filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success))
-      .map(r => {
-        if (r.status === 'rejected') {
-          return { reason: 'Promise rejected', error: r.reason?.message || r.reason };
+        if (type === 'INITIAL_REACTION') {
+          targetObject = traitDoc.initial_reaction;
+        } else if (type === 'CONTEXT_PROMPT') {
+          targetObject = traitDoc.context_prompt;
         } else {
-          return r.value;
+          return { success: false, reason: 'Invalid type' };
         }
+
+        if (!targetObject?.text) return { success: false, reason: 'No text' };
+        text = targetObject.text;
+
+        // version logic
+        let versionToPass = 'basic';
+        let projectInput = '';
+        let conceptInput = '';
+
+        if (traitDoc.version === 'context') {
+          versionToPass = 'context';
+          projectInput = traitDoc.project_input || '';
+          conceptInput = traitDoc.concept_input || '';
+        }
+
+        console.log(`🚀 GenAI start | ID=${ID}`);
+
+        // ✅ queue remains, but background now
+        const genAiResult = await genAiQueue.add(async () => {
+          return genAiService.classify(
+            text,
+            traitTitle,
+            traitDefinition,
+            traitExamples,
+            versionToPass,
+            projectInput,
+            conceptInput
+          );
+        });
+
+        if (!genAiResult?.success) {
+          console.error('GenAI failed', genAiResult?.error);
+          return { success: false, reason: 'GenAI failed' };
+        }
+
+        const genAiResponse = genAiResult.data;
+        const llmScore = commentPrediction;
+        const genAiScore = genAiResponse.present ? 1 : 0;
+
+        const { action, finalScore } =
+          genAiService.determineAction(llmScore, genAiResponse);
+
+        const needsReview =
+          genAiService.requiresReview(genAiResponse, llmScore);
+
+        // init arrays
+        targetObject.genAiRecords ||= [];
+        targetObject.traits ||= [];
+        targetObject.reviewTags ||= [];
+
+        const hasTrait = targetObject.traits.includes(traitTitle);
+
+        // record
+        const genAiRecord = {
+          llmScore,
+          genAiSays: {
+            present: genAiResponse.present,
+            confidence: genAiResponse.confidence,
+            rationale: genAiResponse.rationale,
+            score: genAiResponse.score
+          },
+          finalScore,
+          action,
+          traitTitle,
+          timestamp: new Date()
+        };
+
+        targetObject.genAiRecords.push(genAiRecord);
+
+        if (finalScore === 1 && !hasTrait) {
+          targetObject.traits.push(traitTitle);
+        } else if (finalScore === 0 && hasTrait) {
+          targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
+        }
+
+        if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
+          targetObject.reviewTags.push(traitTitle);
+        }
+        traitDoc.processed = true;
+
+        await traitDoc.save();
+
+        console.log(`✅ DONE | ID=${ID} | Final=${finalScore}`);
+        return { success: true, ID, finalScore };
+
+      } catch (err) {
+        console.error(`❌ Item failed (${item?.ID})`, err);
+        return { success: false, reason: err.message };
+      }
+    }));
+
+    // Count results
+    results.forEach(result => {
+      processedCount++;
+      if (result.status === 'fulfilled' && result.value?.success) {
+        successCount++;
+      } else {
+        failedCount++;
+      }
+    });
+
+    console.log(`✅ Batch ${batchNumber}/${totalBatches} completed`);
+
+    // Broadcast completion only when all batches are done
+    if (batchNumber === totalBatches) {
+      await Trait.updateMany({}, { status: 'COMPLETED' });
+      // Calculate processing time
+      const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+
+      // Broadcast completion
+      console.log(`🎉 All batches completed! Processed: ${processedCount}, Success: ${successCount}, Failed: ${failedCount}`);
+
+      broadcastUpdate({
+        type: 'trait_prediction_complete',
+        traitTitle,
+        traitType: type,
+        model_filename,
+        totalItems: data.length,
+        processedCount,
+        successCount,
+        failedCount,
+        processingTime: `${processingTime}s`,
+        timestamp: new Date().toISOString()
       });
-    console.error(`❌ Failed items (${failed}):`, JSON.stringify(failedItems, null, 2));
+    }
   }
 }

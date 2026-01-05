@@ -1028,7 +1028,7 @@ async function processTraitPrediction(body) {
 
     console.log(`✅ Batch ${batchNumber}/${totalBatches} completed`);
 
-    // Broadcast completion only when all batches are done
+    // Broadcast completion only when all batches are dones
     if (batchNumber === totalBatches) {
       await Trait.updateMany({}, { status: 'COMPLETED' });
       // Calculate processing time

@@ -828,9 +828,9 @@ console.log('payload',payload)
       project_id,
     } = payload;
 
-    if (!model_filename || !model_filename || !type  === undefined) {
+    if (!model_filename || !type || !item) {
       console.error('❌ Missing fields in worker payload', payload);
-      return res.status(400).send('Invalid payload');
+      return res.status(400).send('Invalid payload: model_filename, type, and item are required');
     }
 
     // ✅ ACK FAST (VERY IMPORTANT)
@@ -909,11 +909,10 @@ async function processGenAiValidation({
   type,
   project_id,
 }) {
-
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
   if (!matchedTrait) {
     console.error(`Trait not found: ${model_filename}`);
-    return;
+    return { success: false, error: 'Trait not found' };
   }
 
   const {
@@ -925,19 +924,33 @@ async function processGenAiValidation({
   try {
     const { ID, commentPrediction } = item;
 
-    const traitDoc = await Trait.findById(ID);
-console.log('traitDoc',traitDoc)
-    let targetObject;
-    let text;
+    if (!ID) {
+      console.error('Missing ID in item:', item);
+      return { success: false, error: 'Missing ID' };
+    }
 
+    const traitDoc = await Trait.findById(ID);
+    if (!traitDoc) {
+      console.error(`Document not found for ID: ${ID}`);
+      return { success: false, error: 'Document not found' };
+    }
+
+    let targetObject;
     if (type === 'INITIAL_REACTION') {
       targetObject = traitDoc.initial_reaction;
     } else if (type === 'CONTEXT_PROMPT') {
       targetObject = traitDoc.context_prompt;
+    } else {
+      console.error(`Invalid type: ${type}`);
+      return { success: false, error: `Invalid type: ${type}` };
     }
 
+    if (!targetObject || !targetObject.text) {
+      console.error(`Target object or text not found for ID: ${ID}, type: ${type}`);
+      return { success: false, error: 'Target object or text not found' };
+    }
 
-      text = targetObject.text;
+    const text = targetObject.text;
 
     // version logic
     let versionToPass = 'basic';
@@ -951,47 +964,38 @@ console.log('traitDoc',traitDoc)
     }
 
     console.log(`🚀 GenAI start | ID=${ID}`);
-console.log({'hellllelelelel':text,
-  traitTitle,
-  traitDefinition,
-  traitExamples,
-  versionToPass,
-  projectInput,
-  conceptInput})
-    // ✅ queue remains, but background now
-    const genAiResult =
-      await genAiService.classify(
-        text,
-        traitTitle,
-        traitDefinition,
-        traitExamples,
-        versionToPass,
-        projectInput,
-        conceptInput
-      );
-console.log('genairesult',genAiResult)
+
+    // Call GenAI API
+    const genAiResult = await genAiService.classify(
+      text,
+      traitTitle,
+      traitDefinition,
+      traitExamples,
+      versionToPass,
+      projectInput,
+      conceptInput
+    );
+
     if (!genAiResult?.success) {
-      console.error('GenAI failed', genAiResult?.error);
+      console.error(`❌ GenAI failed for ID: ${ID}`, genAiResult?.error);
+      return { success: false, error: `GenAI API failed: ${genAiResult?.error}` };
     }
 
     const genAiResponse = genAiResult.data;
-    const llmScore = commentPrediction;
+    const llmScore = Number(commentPrediction);
     const genAiScore = genAiResponse.present ? 1 : 0;
 
-    const { action, finalScore } =
-      genAiService.determineAction(llmScore, genAiResponse);
+    const { action, finalScore } = genAiService.determineAction(llmScore, genAiResponse);
+    const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
 
-    const needsReview =
-      genAiService.requiresReview(genAiResponse, llmScore);
-
-    // init arrays
+    // Initialize arrays
     targetObject.genAiRecords ||= [];
     targetObject.traits ||= [];
     targetObject.reviewTags ||= [];
 
     const hasTrait = targetObject.traits.includes(traitTitle);
 
-    // record
+    // Create GenAI record
     const genAiRecord = {
       llmScore,
       genAiSays: {
@@ -1008,20 +1012,22 @@ console.log('genairesult',genAiResult)
 
     targetObject.genAiRecords.push(genAiRecord);
 
+    // Update traits
     if (finalScore === 1 && !hasTrait) {
       targetObject.traits.push(traitTitle);
     } else if (finalScore === 0 && hasTrait) {
       targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
     }
 
+    // Add review tag if needed
     if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
       targetObject.reviewTags.push(traitTitle);
     }
-    traitDoc.processed = true;
 
+    traitDoc.processed = true;
     const saved = await traitDoc.save();
 
-    // ✅ socket emit SAFE here
+    // Broadcast update
     broadcastUpdate({
       type: finalScore === 1 ? 'trait_added' : 'trait_updated',
       documentId: ID,
@@ -1037,9 +1043,10 @@ console.log('genairesult',genAiResult)
     });
 
     console.log(`✅ DONE | ID=${ID} | Final=${finalScore}`);
+    return { success: true, documentId: ID, finalScore };
 
   } catch (err) {
     console.error(`❌ Item failed (${item?.ID})`, err);
+    return { success: false, error: err.message };
   }
-
 }

@@ -926,7 +926,7 @@ async function processGenAiValidation({
     const { ID, commentPrediction } = item;
 
     const traitDoc = await Trait.findById(ID);
-
+console.log('traitDoc',traitDoc)
     let targetObject;
     let text;
 
@@ -936,7 +936,7 @@ async function processGenAiValidation({
       targetObject = traitDoc.context_prompt;
     }
 
-    if (!targetObject?.text)
+
       text = targetObject.text;
 
     // version logic

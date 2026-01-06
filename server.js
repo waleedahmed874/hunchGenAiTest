@@ -951,7 +951,13 @@ async function processGenAiValidation({
     }
 
     console.log(`🚀 GenAI start | ID=${ID}`);
-
+console.log({'hellllelelelel':text,
+  traitTitle,
+  traitDefinition,
+  traitExamples,
+  versionToPass,
+  projectInput,
+  conceptInput})
     // ✅ queue remains, but background now
     const genAiResult =
       await genAiService.classify(
@@ -963,7 +969,7 @@ async function processGenAiValidation({
         projectInput,
         conceptInput
       );
-
+console.log('genairesult',genAiResult)
     if (!genAiResult?.success) {
       console.error('GenAI failed', genAiResult?.error);
     }

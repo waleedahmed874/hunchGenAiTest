@@ -426,17 +426,13 @@ app.post('/trait-prediction', async (req, res) => {
 
     // ⛔ NO heavy work here
     const genAiQueue = require('./GenAiQueueService');
-    const batch_id = `${model_filename}-${type}-${Date.now()}`;
-    const total_count = data.length;
 
     for (const item of data) {
       await genAiQueue.enqueueGenAi({
         item,
         model_filename,
         type,
-        project_id,
-        total_count,
-        batch_id
+        project_id
       });
     }
 
@@ -828,8 +824,6 @@ app.post('/genai-validation-worker', async (req, res) => {
       model_filename,
       type,
       project_id,
-      total_count,
-      batch_id,
     } = payload;
 
     if (!model_filename || !type || !item) {
@@ -846,8 +840,6 @@ app.post('/genai-validation-worker', async (req, res) => {
       model_filename,
       type,
       project_id,
-      total_count,
-      batch_id,
     }).catch(err => {
       console.error('❌ GenAI worker failed:', err);
     });
@@ -909,17 +901,23 @@ async function startServer() {
 
 // Start the application
 startServer();
-// Simple batch tracker
-const batchTracker = new Map();
+
+// Counter for tracking processed items
+let processedCounter = 0;
+let expectedCount = null;
 
 async function processGenAiValidation({
   item,
   model_filename,
   type,
   project_id,
-  total_count,
-  batch_id,
 }) {
+  // Calculate expected count once at start (from database)
+  if (expectedCount === null) {
+    const dbTraitsCount = await Trait.countDocuments();
+    expectedCount = (dbTraitsCount * 54) + (dbTraitsCount * 10);
+  }
+  
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
   if (!matchedTrait) {
     console.error(`Trait not found: ${model_filename}`);
@@ -1037,29 +1035,27 @@ async function processGenAiValidation({
 
     traitDoc.processed = true;
     const saved = await traitDoc.save();
-    console.log(`✅ DONE | ID=${ID} | Final=${finalScore}`);
+  
+    // Increment counter
+    processedCounter += 1;
     
-    // Check batch completion
-    if (batch_id && total_count) {
-      if (!batchTracker.has(batch_id)) {
-        batchTracker.set(batch_id, { total: total_count, completed: 0 });
-      }
-      const tracker = batchTracker.get(batch_id);
-      tracker.completed += 1;
-      if (tracker.completed >= tracker.total) {
-        console.log('batch complete', {
-          batch_id,
-          total: tracker.total,
-          message: 'All validations completed. Please refresh data.'
-        });
-        broadcastUpdate({
-          type: 'batch_complete',
-          batch_id,
-          total: tracker.total,
-          message: 'All validations completed. Please refresh data.'
-        });
-        batchTracker.delete(batch_id);
-      }
+    console.log(`✅ DONE | ID=${ID} | Final=${finalScore} | Counter: ${processedCounter}/${expectedCount}`);
+    
+    // Check if counter equals expected count
+    if (processedCounter >= expectedCount) {
+      console.log('✅ All GenAI validations completed. Please refresh to fetch latest data.');
+      console.log('✅ Processed:', processedCounter);
+      console.log('✅ Expected:', expectedCount);
+      broadcastUpdate({
+        type: 'process_completed',
+        message: 'All GenAI validations completed. Please refresh to fetch latest data.',
+        processed: processedCounter,
+        expected: expectedCount,
+        timestamp: new Date().toISOString()
+      });
+      // Reset for next batch
+      processedCounter = 0;
+      expectedCount = null;
     }
     
     return { success: true, documentId: ID, finalScore };

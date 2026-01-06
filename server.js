@@ -811,8 +811,15 @@ app.get('/api/traits/db/stats', async (req, res) => {
 app.post('/genai-validation-worker', async (req, res) => {
   try {
     // 🔴 Cloud Tasks body is BASE64
-    const decoded = Buffer.from(req.body, 'base64').toString('utf-8');
-    const payload = JSON.parse(decoded);
+    const rawBody = req.body;
+    let payload;
+
+    if (rawBody && typeof rawBody === 'string') {
+      const decoded = Buffer.from(rawBody, 'base64').toString('utf8');
+      payload = JSON.parse(decoded);
+    } else {
+      payload = rawBody; // fallback for direct JSON requests
+    }
 console.log('payload',payload.type)
     const {
       ID,

@@ -16,7 +16,6 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
-app.use(express.text({ type: '*/*' }));
 
 // WebSocket server with ping/pong to keep connections alive
 const wss = new WebSocket.Server({
@@ -410,6 +409,7 @@ app.post('/api/traits/process', async (req, res) => {
   }
 });
 
+app.use(express.text({ type: '*/*' }));
 
 app.post('/trait-prediction', async (req, res) => {
   try {

@@ -16,6 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 const gcloudService = new GCloudService();
+app.use(express.text({ type: '*/*' }));
 
 // WebSocket server with ping/pong to keep connections alive
 const wss = new WebSocket.Server({
@@ -413,7 +414,7 @@ app.post('/api/traits/process', async (req, res) => {
 app.post('/trait-prediction', async (req, res) => {
   try {
     const { data, model_filename, type, project_id } = req.body;
-
+console.log('data',type)
     if (!Array.isArray(data)) {
       return res.status(400).json({ success: false });
     }
@@ -809,7 +810,11 @@ app.get('/api/traits/db/stats', async (req, res) => {
 });
 app.post('/genai-validation-worker', async (req, res) => {
   try {
-    const { 
+    // 🔴 Cloud Tasks body is BASE64
+    const decoded = Buffer.from(req.body, 'base64').toString('utf-8');
+    const payload = JSON.parse(decoded);
+console.log('payload',payload.type)
+    const {
       ID,
       text,
       traitTitle,
@@ -820,23 +825,17 @@ app.post('/genai-validation-worker', async (req, res) => {
       conceptInput,
       llmScore,
       type
-    } = req.body;
+    } = payload;
 
     if (!ID || !text || !traitTitle || llmScore === undefined) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields'
-      });
+      console.error('❌ Missing fields in worker payload', payload);
+      return res.status(400).send('Invalid payload');
     }
 
-    // 🔥 VERY IMPORTANT: respond immediately
-    res.status(200).json({
-      success: true,
-      message: 'GenAI validation job accepted',
-      ID
-    });
+    // ✅ ACK FAST (VERY IMPORTANT)
+    res.status(200).send('OK');
 
-    // 🧠 background execution
+    // 🧠 Background processing (SAFE)
     processGenAiValidation({
       ID,
       text,
@@ -853,11 +852,10 @@ app.post('/genai-validation-worker', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Worker endpoint error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error('❌ Worker endpoint crashed:', err);
+    res.status(400).send('Bad Request');
   }
 });
-
 // Delete all trait documents from database
 app.delete('/api/traits/db', async (req, res) => {
   try {

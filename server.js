@@ -11,74 +11,6 @@ const Trait = require('./models/Trait');
 const genAiService = require('./services/genAiService');
 
 // Request Queue for handling GenAI API calls sequentially
-class RequestQueue {
-  constructor() {
-    this.queue = Promise.resolve();
-  }
-
-  add(operation) {
-    this.queue = this.queue.then(operation, operation);
-    return this.queue;
-  }
-}
-
-// Advanced Callback Queue for handling multiple callbacks with concurrency control
-class AdvancedCallbackQueue {
-  constructor(options = {}) {
-    this.concurrency = options.concurrency || 5; // 5 callbacks simultaneously
-    this.batchSize = options.batchSize || 30; // 30 items per batch
-    this.delayBetweenBatches = options.delayBetweenBatches || 500; // 0.5 second delay
-    this.running = 0;
-    this.queue = [];
-    this.processed = 0;
-    this.failed = 0;
-  }
-
-  async add(operation) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ operation, resolve, reject });
-      this.process();
-    });
-  }
-
-  async process() {
-    if (this.running >= this.concurrency || this.queue.length === 0) {
-      return;
-    }
-
-    this.running++;
-    const { operation, resolve, reject } = this.queue.shift();
-
-    console.log(`📊 Queue Status: Running=${this.running}, Queued=${this.queue.length}`);
-
-    try {
-      const result = await operation();
-      resolve(result);
-    } catch (error) {
-      console.error('Queue operation failed:', error);
-      reject(error);
-    } finally {
-      this.running--;
-      this.process(); // Process next immediately
-    }
-  }
-
-  getStatus() {
-    return {
-      running: this.running,
-      queued: this.queue.length,
-      processed: this.processed,
-      failed: this.failed
-    };
-  }
-}
-
-const genAiQueue = new RequestQueue();
-const callbackQueue = new AdvancedCallbackQueue({
-  concurrency: 5,    // 5 callbacks at same time for speed
-  batchSize: 30,     // 30 items per batch
-  delayBetweenBatches: 500  // 0.5 second delay
-});
 
 const app = express();
 const server = http.createServer(app);
@@ -478,45 +410,37 @@ app.post('/api/traits/process', async (req, res) => {
 });
 
 
-// Trait prediction callback endpoint
 app.post('/trait-prediction', async (req, res) => {
   try {
-    const { data, model_filename, type } = req.body;
+    const { data, model_filename, type, project_id } = req.body;
 
-    if (!data || !Array.isArray(data)) {
-      return res.status(400).json({ success: false, error: 'Data must be an array' });
-    }
-    if (!model_filename || !type) {
-      return res.status(400).json({ success: false, error: 'model_filename and type required' });
+    if (!Array.isArray(data)) {
+      return res.status(400).json({ success: false });
     }
 
-    const queueStatus = callbackQueue.getStatus();
-
-    // 🔥 IMPORTANT: respond immediately
+    // ✅ respond immediately
     res.status(200).json({
       success: true,
-      message: 'Trait prediction queued for processing',
-      items: data.length,
-      queueStatus: {
-        position: queueStatus.queued + queueStatus.running + 1,
-        running: queueStatus.running,
-        queued: queueStatus.queued
-      }
+      queued: data.length
     });
 
-    // ✅ Queue the callback processing (controlled concurrency)
-    callbackQueue.add(async () => {
-      console.log(`📥 Processing callback: ${model_filename} | ${type} | ${data.length} items`);
-      return processTraitPrediction(req.body);
-    }).catch(err => {
-      console.error('❌ Callback queue processing failed:', err);
-    });
+    // ⛔ NO heavy work here
+    const genAiQueue = require('./GenAiQueueService');
+
+    for (const item of data) {
+      await genAiQueue.enqueueGenAi({
+        item,
+        model_filename,
+        type,
+        project_id
+      });
+    }
 
   } catch (err) {
-    console.error('Callback error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    console.error(err);
   }
 });
+
 
 // Get reactions data
 app.get('/api/reactions/initial', (req, res) => {
@@ -883,6 +807,56 @@ app.get('/api/traits/db/stats', async (req, res) => {
     });
   }
 });
+app.post('/genai-validation-worker', async (req, res) => {
+  try {
+    const { 
+      ID,
+      text,
+      traitTitle,
+      traitDefinition,
+      traitExamples,
+      versionToPass,
+      projectInput,
+      conceptInput,
+      llmScore,
+      type
+    } = req.body;
+
+    if (!ID || !text || !traitTitle || llmScore === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    // 🔥 VERY IMPORTANT: respond immediately
+    res.status(200).json({
+      success: true,
+      message: 'GenAI validation job accepted',
+      ID
+    });
+
+    // 🧠 background execution
+    processGenAiValidation({
+      ID,
+      text,
+      traitTitle,
+      traitDefinition,
+      traitExamples,
+      versionToPass,
+      projectInput,
+      conceptInput,
+      llmScore,
+      type
+    }).catch(err => {
+      console.error('❌ GenAI worker failed:', err);
+    });
+
+  } catch (err) {
+    console.error('Worker endpoint error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Delete all trait documents from database
 app.delete('/api/traits/db', async (req, res) => {
@@ -936,179 +910,123 @@ async function startServer() {
 
 // Start the application
 startServer();
-async function processTraitPrediction(body) {
-  const { data, model_filename, project_id, type } = body;
+async function processGenAiValidation(payload) {
+  const {
+    ID,
+    text,
+    traitTitle,
+    traitDefinition,
+    traitExamples,
+    versionToPass,
+    projectInput,
+    conceptInput,
+    llmScore,
+    type
+  } = payload;
 
-  const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
-  if (!matchedTrait) {
-    console.error(`❌ Trait not found: ${model_filename}`);
+  console.log(`🚀 GenAI worker started | ID=${ID}`);
+
+  const traitDoc = await Trait.findById(ID);
+  if (!traitDoc) {
+    console.error(`❌ Trait doc not found | ID=${ID}`);
     return;
   }
 
-  const {
-    title: traitTitle,
-    trait_definition: traitDefinition = '',
-    trait_examples: traitExamples = ''
-  } = matchedTrait;
-
-  const startTime = Date.now();
-  let processedCount = 0;
-  let failedCount = 0;
-  const BATCH_SIZE = 20; // Process 20 items in parallel per batch
-
-  console.log(`🎯 Starting: ${traitTitle} | ${type} | ${data.length} items`);
-
-  // Process in batches for speed
-  for (let i = 0; i < data.length; i += BATCH_SIZE) {
-    const batch = data.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(data.length / BATCH_SIZE);
-    
-    console.log(`📦 Batch ${batchNum}/${totalBatches} (${batch.length} items)`);
-
-    // Process batch items in parallel
-    const batchPromises = batch.map(async (item) => {
-      try {
-        const { ID, commentPrediction } = item;
-        if (!ID) return { success: false };
-
-        const traitDoc = await Trait.findById(ID);
-        if (!traitDoc) return { success: false };
-
-        let targetObject;
-        let text;
-
-        if (type === 'INITIAL_REACTION') {
-          targetObject = traitDoc.initial_reaction;
-        } else if (type === 'CONTEXT_PROMPT') {
-          targetObject = traitDoc.context_prompt;
-        } else {
-          return { success: false };
-        }
-
-        if (!targetObject?.text) return { success: false };
-        text = targetObject.text;
-
-        // version logic
-        let versionToPass = 'basic';
-        let projectInput = '';
-        let conceptInput = '';
-
-        if (traitDoc.version === 'context') {
-          versionToPass = 'context';
-          projectInput = traitDoc.project_input || '';
-          conceptInput = traitDoc.concept_input || '';
-        }
-
-        // ✅ GenAI queue for sequential API calls (prevents rate limit)
-        const genAiResult = await genAiQueue.add(async () => {
-          return genAiService.classify(
-            text,
-            traitTitle,
-            traitDefinition,
-            traitExamples,
-            versionToPass,
-            projectInput,
-            conceptInput
-          );
-        });
-
-        if (!genAiResult?.success) {
-          console.error(`❌ GenAI failed for ID=${ID}`);
-          return { success: false };
-        }
-
-        const genAiResponse = genAiResult.data;
-        const llmScore = commentPrediction;
-
-        const { action, finalScore } = genAiService.determineAction(llmScore, genAiResponse);
-        const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
-
-        // Initialize arrays
-        targetObject.genAiRecords ||= [];
-        targetObject.traits ||= [];
-        targetObject.reviewTags ||= [];
-
-        const hasTrait = targetObject.traits.includes(traitTitle);
-
-        // Record
-        const genAiRecord = {
-          llmScore,
-          genAiSays: {
-            present: genAiResponse.present,
-            confidence: genAiResponse.confidence,
-            rationale: genAiResponse.rationale,
-            score: genAiResponse.score
-          },
-          finalScore,
-          action,
-          traitTitle,
-          timestamp: new Date()
-        };
-
-        targetObject.genAiRecords.push(genAiRecord);
-
-        if (finalScore === 1 && !hasTrait) {
-          targetObject.traits.push(traitTitle);
-        } else if (finalScore === 0 && hasTrait) {
-          targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
-        }
-
-        if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
-          targetObject.reviewTags.push(traitTitle);
-        }
-        
-        traitDoc.processed = true;
-        const saved = await traitDoc.save();
-
-        // Broadcast update
-        try {
-          broadcastUpdate({
-            type: finalScore === 1 ? 'trait_added' : 'trait_updated',
-            documentId: ID,
-            document: saved,
-            traitTitle,
-            traitType: type,
-            llmScore,
-            genAiScore: genAiResponse.present ? 1 : 0,
-            finalScore,
-            action,
-            needsReview,
-            timestamp: new Date().toISOString()
-          });
-        } catch (socketError) {
-          console.warn('⚠️ Socket broadcast failed:', socketError.message);
-        }
-
-        return { success: true, ID };
-
-      } catch (err) {
-        console.error(`❌ Item failed (${item?.ID}):`, err.message);
-        return { success: false, error: err.message };
-      }
-    });
-
-    // Wait for batch to complete
-    const batchResults = await Promise.allSettled(batchPromises);
-    
-    // Count results
-    batchResults.forEach(result => {
-      if (result.status === 'fulfilled' && result.value?.success) {
-        processedCount++;
-      } else {
-        failedCount++;
-      }
-    });
-
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`✅ Batch ${batchNum}/${totalBatches} done | Processed: ${processedCount} | Failed: ${failedCount} | Time: ${elapsed}s`);
-
-    // Small delay between batches to prevent overwhelming
-    if (i + BATCH_SIZE < data.length) {
-      await new Promise(resolve => setTimeout(resolve, 300)); // 0.3s delay
-    }
+  let targetObject;
+  if (type === 'INITIAL_REACTION') {
+    targetObject = traitDoc.initial_reaction;
+  } else if (type === 'CONTEXT_PROMPT') {
+    targetObject = traitDoc.context_prompt;
+  } else {
+    console.error(`❌ Invalid type: ${type}`);
+    return;
   }
 
-  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`🎉 COMPLETED: ${traitTitle} | Total: ${data.length} | Success: ${processedCount} | Failed: ${failedCount} | Time: ${totalTime}s`);
+  if (!targetObject?.text) {
+    console.error(`❌ Target text missing | ID=${ID}`);
+    return;
+  }
+
+  // ============================
+  // 🔥 GEN AI CALL
+  // ============================
+  const genAiResult = await genAiService.classify(
+    text,
+    traitTitle,
+    traitDefinition,
+    traitExamples,
+    versionToPass,
+    projectInput,
+    conceptInput
+  );
+
+  if (!genAiResult?.success) {
+    console.error('❌ GenAI failed:', genAiResult?.error);
+    return;
+  }
+
+  const genAiResponse = genAiResult.data;
+  const genAiScore = genAiResponse.present ? 1 : 0;
+
+  const { action, finalScore } =
+    genAiService.determineAction(llmScore, genAiResponse);
+
+  const needsReview =
+    genAiService.requiresReview(genAiResponse, llmScore);
+
+  // ============================
+  // 🔄 UPDATE DOCUMENT
+  // ============================
+  targetObject.genAiRecords ||= [];
+  targetObject.traits ||= [];
+  targetObject.reviewTags ||= [];
+
+  const hasTrait = targetObject.traits.includes(traitTitle);
+
+  const genAiRecord = {
+    llmScore,
+    genAiSays: {
+      present: genAiResponse.present,
+      confidence: genAiResponse.confidence,
+      rationale: genAiResponse.rationale,
+      score: genAiResponse.score
+    },
+    finalScore,
+    action,
+    traitTitle,
+    timestamp: new Date()
+  };
+
+  targetObject.genAiRecords.push(genAiRecord);
+
+  if (finalScore === 1 && !hasTrait) {
+    targetObject.traits.push(traitTitle);
+  } else if (finalScore === 0 && hasTrait) {
+    targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
+  }
+
+  if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
+    targetObject.reviewTags.push(traitTitle);
+  }
+
+  const saved = await traitDoc.save();
+
+  // ============================
+  // 📡 SOCKET BROADCAST (SAME)
+  // ============================
+  broadcastUpdate({
+    type: finalScore === 1 ? 'trait_added' : 'trait_updated',
+    documentId: ID,
+    document: saved,
+    traitTitle,
+    traitType: type,
+    llmScore,
+    genAiScore,
+    finalScore,
+    action,
+    needsReview,
+    timestamp: new Date().toISOString()
+  });
+
+  console.log(`✅ GenAI DONE | ID=${ID} | Final=${finalScore}`);
 }

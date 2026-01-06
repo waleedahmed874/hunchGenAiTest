@@ -58,7 +58,7 @@ class GCloudService {
 
     // console.log(request)
     console.log('===============response=================')
-    console.log(response)
+    // console.log(response)
     return response;
   }
 

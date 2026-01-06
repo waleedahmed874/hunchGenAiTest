@@ -77,8 +77,8 @@ wss.on('connection', (ws, req) => {
 const pingInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
-      console.log('⚠️ Terminating dead WebSocket connection');
-      return ws.terminate();
+      console.log('⚠️ WebSocket connection unresponsive');
+      // return ws.terminate();
     }
 
     ws.isAlive = false;
@@ -414,7 +414,6 @@ app.use(express.text({ type: '*/*' }));
 app.post('/trait-prediction', async (req, res) => {
   try {
     const { data, model_filename, type, project_id } = req.body;
-console.log('data',type)
     if (!Array.isArray(data)) {
       return res.status(400).json({ success: false });
     }
@@ -820,7 +819,6 @@ app.post('/genai-validation-worker', async (req, res) => {
     } else {
       payload = rawBody; // fallback for direct JSON requests
     }
-console.log('payload',payload)
     const {
       item,
       model_filename,
@@ -1026,7 +1024,19 @@ async function processGenAiValidation({
 
     traitDoc.processed = true;
     const saved = await traitDoc.save();
-
+    console.log('broadcastUpdate', {
+      type: finalScore === 1 ? 'trait_added' : 'trait_updated',
+      documentId: ID,
+      document: saved,
+      traitTitle,
+      traitType: type,
+      llmScore,
+      genAiScore,
+      finalScore,
+      action,
+      needsReview,
+      timestamp: new Date().toISOString()
+    })
     // Broadcast update
     broadcastUpdate({
       type: finalScore === 1 ? 'trait_added' : 'trait_updated',

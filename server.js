@@ -426,13 +426,17 @@ app.post('/trait-prediction', async (req, res) => {
 
     // ⛔ NO heavy work here
     const genAiQueue = require('./GenAiQueueService');
+    const batch_id = `${model_filename}-${type}-${Date.now()}`;
+    const total_count = data.length;
 
     for (const item of data) {
       await genAiQueue.enqueueGenAi({
         item,
         model_filename,
         type,
-        project_id
+        project_id,
+        total_count,
+        batch_id
       });
     }
 
@@ -824,6 +828,8 @@ app.post('/genai-validation-worker', async (req, res) => {
       model_filename,
       type,
       project_id,
+      total_count,
+      batch_id,
     } = payload;
 
     if (!model_filename || !type || !item) {
@@ -840,6 +846,8 @@ app.post('/genai-validation-worker', async (req, res) => {
       model_filename,
       type,
       project_id,
+      total_count,
+      batch_id,
     }).catch(err => {
       console.error('❌ GenAI worker failed:', err);
     });
@@ -901,11 +909,16 @@ async function startServer() {
 
 // Start the application
 startServer();
+// Simple batch tracker
+const batchTracker = new Map();
+
 async function processGenAiValidation({
   item,
   model_filename,
   type,
   project_id,
+  total_count,
+  batch_id,
 }) {
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
   if (!matchedTrait) {
@@ -1024,35 +1037,31 @@ async function processGenAiValidation({
 
     traitDoc.processed = true;
     const saved = await traitDoc.save();
-    console.log('broadcastUpdate', {
-      type: finalScore === 1 ? 'trait_added' : 'trait_updated',
-      documentId: ID,
-      document: saved,
-      traitTitle,
-      traitType: type,
-      llmScore,
-      genAiScore,
-      finalScore,
-      action,
-      needsReview,
-      timestamp: new Date().toISOString()
-    })
-    // Broadcast update
-    broadcastUpdate({
-      type: finalScore === 1 ? 'trait_added' : 'trait_updated',
-      documentId: ID,
-      document: saved,
-      traitTitle,
-      traitType: type,
-      llmScore,
-      genAiScore,
-      finalScore,
-      action,
-      needsReview,
-      timestamp: new Date().toISOString()
-    });
-
     console.log(`✅ DONE | ID=${ID} | Final=${finalScore}`);
+    
+    // Check batch completion
+    if (batch_id && total_count) {
+      if (!batchTracker.has(batch_id)) {
+        batchTracker.set(batch_id, { total: total_count, completed: 0 });
+      }
+      const tracker = batchTracker.get(batch_id);
+      tracker.completed += 1;
+      if (tracker.completed >= tracker.total) {
+        console.log('batch complete', {
+          batch_id,
+          total: tracker.total,
+          message: 'All validations completed. Please refresh data.'
+        });
+        broadcastUpdate({
+          type: 'batch_complete',
+          batch_id,
+          total: tracker.total,
+          message: 'All validations completed. Please refresh data.'
+        });
+        batchTracker.delete(batch_id);
+      }
+    }
+    
     return { success: true, documentId: ID, finalScore };
 
   } catch (err) {

@@ -772,7 +772,7 @@ app.get('/api/traits/db/review', async (req, res) => {
 // Get statistics/summary
 app.get('/api/traits/db/stats', async (req, res) => {
   try {
-    const totalTraits = await Trait.countDocuments();
+    const totalTraits = await Trait.countDocuments({ processed: false });
     const initialReactionCount = await Trait.countDocuments({ type: 'INITIAL_REACTION' });
     const contextPromptCount = await Trait.countDocuments({ type: 'CONTEXT_PROMPT' });
     const reviewNeededCount = await Trait.countDocuments({ reviewTags: { $exists: true, $ne: [] } });
@@ -1032,8 +1032,11 @@ async function processGenAiValidation({
     if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
       targetObject.reviewTags.push(traitTitle);
     }
-
-    traitDoc.processed = true;
+    // Check if processing complete (54 initial_reaction + 10 context_prompt records)
+    if (traitDoc.initial_reaction?.genAiRecords?.length === 54 && traitDoc.context_prompt?.genAiRecords?.length === 10) {
+      traitDoc.processed = true;
+    }
+    
     const saved = await traitDoc.save();
   
     // Increment counter

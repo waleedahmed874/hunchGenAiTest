@@ -1033,7 +1033,7 @@ async function processGenAiValidation({
       targetObject.reviewTags.push(traitTitle);
     }
     // Check if processing complete (41 initial_reaction + 10 context_prompt records)
-    if (traitDoc.initial_reaction?.genAiRecords?.length === 41 && traitDoc.context_prompt?.genAiRecords?.length === 10) {
+    if (traitDoc.initial_reaction?.genAiRecords?.length === 40 && traitDoc.context_prompt?.genAiRecords?.length === 10 || traitDoc.initial_reaction?.genAiRecords?.length === 41 && traitDoc.context_prompt?.genAiRecords?.length === 9) {
       traitDoc.processed = true;
     }
     

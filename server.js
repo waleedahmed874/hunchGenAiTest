@@ -914,7 +914,7 @@ async function processGenAiValidation({
 }) {
   // Calculate expected count once at start (from database)
   if (expectedCount === null) {
-    const dbTraitsCount = await Trait.countDocuments();
+    const dbTraitsCount = await Trait.countDocuments({ processed: false });
     expectedCount = (dbTraitsCount * 41) + (dbTraitsCount * 10);
   }
 

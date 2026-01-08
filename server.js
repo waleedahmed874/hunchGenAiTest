@@ -917,7 +917,7 @@ async function processGenAiValidation({
     const dbTraitsCount = await Trait.countDocuments();
     expectedCount = (dbTraitsCount * 41) + (dbTraitsCount * 10);
   }
-  
+
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
   if (!matchedTrait) {
     console.error(`Trait not found: ${model_filename}`);
@@ -1032,21 +1032,20 @@ async function processGenAiValidation({
     if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
       targetObject.reviewTags.push(traitTitle);
     }
-    console.log('traitDoc.initial_reaction?.genAiRecords?.length',traitDoc.initial_reaction?.genAiRecords?.length,traitDoc.context_prompt?.genAiRecords?.length )
-    // Check if processing complete (41 initial_reaction + 10 context_prompt records)
-    if (traitDoc.initial_reaction?.genAiRecords?.length >= 40 && traitDoc.context_prompt?.genAiRecords?.length >= 10 || traitDoc.initial_reaction?.genAiRecords?.length >= 41 && traitDoc.context_prompt?.genAiRecords?.length >= 9) {
-      traitDoc.processed = true;
-    }
-    
-    const saved = await traitDoc.save();
-  
+    await traitDoc.save();
+
     // Increment counter
     processedCounter += 1;
-    
+
     console.log(`✅ DONE | ID=${ID} | Final=${finalScore} | Counter: ${processedCounter}/${expectedCount}`);
-    
+
     // Check if counter equals expected count
     if (processedCounter >= expectedCount) {
+      await Trait.updateMany(
+        { processed: false },
+        { $set: { processed: true } }
+
+      )
       console.log('✅ All GenAI validations completed. Please refresh to fetch latest data.');
       console.log('✅ Processed:', processedCounter);
       console.log('✅ Expected:', expectedCount);
@@ -1061,7 +1060,7 @@ async function processGenAiValidation({
       processedCounter = 0;
       expectedCount = null;
     }
-    
+
     return { success: true, documentId: ID, finalScore };
 
   } catch (err) {

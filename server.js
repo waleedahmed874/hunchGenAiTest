@@ -1032,8 +1032,9 @@ async function processGenAiValidation({
     if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
       targetObject.reviewTags.push(traitTitle);
     }
+    console.log('traitDoc.initial_reaction?.genAiRecords?.length',traitDoc.initial_reaction?.genAiRecords?.length,traitDoc.context_prompt?.genAiRecords?.length )
     // Check if processing complete (41 initial_reaction + 10 context_prompt records)
-    if (traitDoc.initial_reaction?.genAiRecords?.length === 40 && traitDoc.context_prompt?.genAiRecords?.length === 10 || traitDoc.initial_reaction?.genAiRecords?.length === 41 && traitDoc.context_prompt?.genAiRecords?.length === 9) {
+    if (traitDoc.initial_reaction?.genAiRecords?.length >= 40 && traitDoc.context_prompt?.genAiRecords?.length >= 10 || traitDoc.initial_reaction?.genAiRecords?.length >= 41 && traitDoc.context_prompt?.genAiRecords?.length >= 9) {
       traitDoc.processed = true;
     }
     

@@ -464,12 +464,12 @@ app.get('/api/reactions/context', (req, res) => {
 // Body: { documentId, traitName, feedback, type: 'INITIAL_REACTION' | 'CONTEXT_PROMPT' }
 app.post('/api/traits/feedback', async (req, res) => {
   try {
-    const { documentId, traitName, feedback, type } = req.body;
+    const { documentId, traitName, feedback, type, genAiRecordId, isTraitValidationIncorrect } = req.body;
 
-    if (!documentId || !traitName || !feedback || !type) {
+    if (!documentId || !traitName || !type) {
       return res.status(400).json({
         success: false,
-        error: 'documentId, traitName, feedback, and type are required'
+        error: 'documentId, traitName, and type are required'
       });
     }
 
@@ -508,10 +508,16 @@ app.post('/api/traits/feedback', async (req, res) => {
       ...existing,
       llmScore: existing.llmScore ?? 0,
       finalScore: existing.finalScore ?? (existing.genAiSays?.score ?? 0),
-      action: existing.action ?? 'No change',
+      action: isTraitValidationIncorrect ? 'Score change via feedback' : existing.action ?? 'No change',
       traitTitle: existing.traitTitle ?? traitName,
       genAiSays: existing.genAiSays ?? {},
-      feedback
+      feedback,
+      genAiSays: {
+        ...existing.genAiSays,  // Preserve existing genAiSays
+        score: isTraitValidationIncorrect ? (existing.genAiSays?.score === 1 ? 0 : 1) : existing.genAiSays?.score,
+        present: isTraitValidationIncorrect ? (existing.genAiSays?.present === true ? false : true) : existing.genAiSays?.present,
+
+      },
     };
 
     await doc.save();
@@ -519,10 +525,7 @@ app.post('/api/traits/feedback', async (req, res) => {
     return res.json({
       success: true,
       message: 'Feedback added to genAiRecord',
-      documentId,
-      type,
-      traitName,
-      updatedRecord: target.genAiRecords[recordIndex]
+      updatedDoc: doc
     });
   } catch (error) {
     console.error('Error adding feedback:', error);

@@ -76,7 +76,7 @@ const traitSchema = new mongoose.Schema(
           },
           action: {
             type: String,
-            enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
+            // enum: ['No change', 'Score removed', 'Score added', 'Human review required', 'Score change via feedback'],
             required: true
           },
           traitTitle: String,
@@ -143,13 +143,32 @@ const traitSchema = new mongoose.Schema(
           },
           action: {
             type: String,
-            enum: ['No change', 'Score removed', 'Score added', 'Human review required'],
+            // enum: ['No change', 'Score removed', 'Score added', 'Human review required', 'Score change via feedback'],
             required: true
           },
           traitTitle: String,
           timestamp: {
             type: Date,
             default: Date.now
+          },
+          history: {
+            type: [{
+              finalScore: Number,
+              action: String,
+              feedback: String,
+              genAiSays: {
+                present: Boolean,
+                confidence: Number,
+                rationale: String,
+                score: Number,
+                validationIncorrect: Boolean
+              },
+              timestamp: {
+                type: Date,
+                default: Date.now
+              }
+            }],
+            default: []
           }
         }],
         default: []

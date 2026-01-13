@@ -201,7 +201,7 @@ app.get('/api/traits/initial-reaction', (req, res) => {
 // Process traits and queue tasks to Google Cloud
 app.post('/api/traits/process', async (req, res) => {
   try {
-    const { csv_data, version, project_input, concept_input } = req.body;
+    const { csv_data, version, project_input, concept_input, project_id } = req.body;
 
     // Validate required fields
     if (!csv_data || !Array.isArray(csv_data) || csv_data.length === 0) {
@@ -257,6 +257,7 @@ app.post('/api/traits/process', async (req, res) => {
         concept_input: concept_input || '',
         version: versionLower,
         hunch_id: item.hunch_id,
+        project_id: project_id,
         concept_name: item.concept_name
       };
 
@@ -295,6 +296,7 @@ app.post('/api/traits/process', async (req, res) => {
             initial_reaction: savedDoc.initial_reaction,
             context_prompt: savedDoc.context_prompt,
             hunch_id: savedDoc.hunch_id,
+            project_id: savedDoc.project_id,
             concept_name: savedDoc.concept_name
           },
           timestamp: new Date().toISOString()
@@ -503,21 +505,43 @@ app.post('/api/traits/feedback', async (req, res) => {
     const recordIndex = target.genAiRecords.length - 1 - idx;
     const existing = target.genAiRecords[recordIndex] || {};
 
+    // Calculate new values
+    const currentScore = existing.genAiSays?.score ?? 0;
+    const newScore = isTraitValidationIncorrect ? (currentScore === 1 ? 0 : 1) : currentScore;
+
+    // User requested to ignore finalScore, so we preserve the existing value without toggling
+    const finalScore = existing.finalScore ?? currentScore;
+
+    const newGenAiSays = {
+      ...existing.genAiSays,
+      score: newScore,
+      present: isTraitValidationIncorrect ? (existing.genAiSays?.present === true ? false : true) : existing.genAiSays?.present,
+      validationIncorrect: isTraitValidationIncorrect ? true : existing.genAiSays?.validationIncorrect
+    };
+
+    const newAction = isTraitValidationIncorrect ? 'Score change via feedback' : existing.action ?? 'No change';
+
+    const historyEntry = {
+      finalScore: finalScore,
+      action: newAction,
+      feedback: feedback,
+      genAiSays: newGenAiSays,
+      timestamp: new Date()
+    };
+
+    const history = existing.history ? [...existing.history] : [];
+    history.push(historyEntry);
+
     // Ensure required fields exist to satisfy schema validation
     target.genAiRecords[recordIndex] = {
       ...existing,
       llmScore: existing.llmScore ?? 0,
-      finalScore: existing.finalScore ?? (existing.genAiSays?.score ?? 0),
-      action: isTraitValidationIncorrect ? 'Score change via feedback' : existing.action ?? 'No change',
+      finalScore: finalScore,
+      action: newAction,
       traitTitle: existing.traitTitle ?? traitName,
-      genAiSays: existing.genAiSays ?? {},
+      genAiSays: newGenAiSays,
       feedback,
-      genAiSays: {
-        ...existing.genAiSays,  // Preserve existing genAiSays
-        score: isTraitValidationIncorrect ? (existing.genAiSays?.score === 1 ? 0 : 1) : existing.genAiSays?.score,
-        present: isTraitValidationIncorrect ? (existing.genAiSays?.present === true ? false : true) : existing.genAiSays?.present,
-
-      },
+      history: history
     };
 
     await doc.save();

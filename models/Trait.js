@@ -10,6 +10,8 @@ const traitSchema = new mongoose.Schema(
     project_input: {
       type: String,
       index: true
+    }, project_id: {
+      type: String,
     },
     processed: {
       type: Boolean,
@@ -83,6 +85,25 @@ const traitSchema = new mongoose.Schema(
           timestamp: {
             type: Date,
             default: Date.now
+          },
+          history: {
+            type: [{
+              finalScore: Number,
+              action: String,
+              feedback: String,
+              genAiSays: {
+                present: Boolean,
+                confidence: Number,
+                rationale: String,
+                score: Number,
+                validationIncorrect: Boolean
+              },
+              timestamp: {
+                type: Date,
+                default: Date.now
+              }
+            }],
+            default: []
           }
         }],
         default: []

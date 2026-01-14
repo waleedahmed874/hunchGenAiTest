@@ -333,6 +333,14 @@ app.post('/api/traits/process', async (req, res) => {
     const initialReactionTraits = traits.filter(trait => trait.initialReactionEnabled);
     const contextPromptTraits = traits.filter(trait => trait.contextPromptEnabled);
 
+    // Calculate total tasks to be processed
+    const totalInitialTasks = initialReactionData.length * initialReactionTraits.length;
+    const totalContextTasks = contextPromptData.length * contextPromptTraits.length;
+    expectedCount = totalInitialTasks + totalContextTasks;
+    processedCounter = 0;
+
+    console.log(`🚀 Starting batch processing: ${expectedCount} total tasks expected (${totalInitialTasks} initial + ${totalContextTasks} context).`);
+
     //    First: Queue initial_reaction data
     if (initialReactionData.length > 0 && initialReactionTraits.length > 0) {
       for (const model of initialReactionTraits) {
@@ -941,8 +949,14 @@ async function processGenAiValidation({
 }) {
   // Calculate expected count once at start (from database)
   if (expectedCount === null) {
-    const dbTraitsCount = await Trait.countDocuments({ processed: false });
-    expectedCount = (dbTraitsCount * 41) + (dbTraitsCount * 10);
+    const initialTraitsCount = traits.filter(t => t.initialReactionEnabled).length;
+    const contextTraitsCount = traits.filter(t => t.contextPromptEnabled).length;
+
+    const docsWithInitial = await Trait.countDocuments({ processed: false, 'initial_reaction.text': { $exists: true, $ne: '' } });
+    const docsWithContext = await Trait.countDocuments({ processed: false, 'context_prompt.text': { $exists: true, $ne: '' } });
+
+    expectedCount = (docsWithInitial * initialTraitsCount) + (docsWithContext * contextTraitsCount);
+    console.log(`📊 Expected tasks calculated: ${expectedCount} (${docsWithInitial} docs * ${initialTraitsCount} initial + ${docsWithContext} docs * ${contextTraitsCount} context)`);
   }
 
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
@@ -957,9 +971,9 @@ async function processGenAiValidation({
     trait_examples: traitExamples = ''
   } = matchedTrait;
 
-  try {
-    const { ID, commentPrediction } = item;
+  const { ID, commentPrediction } = item;
 
+  try {
     if (!ID) {
       console.error('Missing ID in item:', item);
       return { success: false, error: 'Missing ID' };
@@ -999,7 +1013,7 @@ async function processGenAiValidation({
       conceptInput = traitDoc.concept_input || '';
     }
 
-    console.log(`🚀 GenAI start | ID=${ID}`);
+    console.log(`🚀 GenAI start | ID=${ID} | Trait=${traitTitle}`);
 
     // Call GenAI API
     const genAiResult = await genAiService.classify(
@@ -1014,12 +1028,11 @@ async function processGenAiValidation({
 
     if (!genAiResult?.success) {
       console.error(`❌ GenAI failed for ID: ${ID}`, genAiResult?.error);
-      return { success: false, error: `GenAI API failed: ${genAiResult?.error}` };
+      throw new Error(`GenAI API failed: ${genAiResult?.error}`);
     }
 
     const genAiResponse = genAiResult.data;
     const llmScore = Number(commentPrediction);
-    const genAiScore = genAiResponse.present ? 1 : 0;
 
     const { action, finalScore } = genAiService.determineAction(llmScore, genAiResponse);
     const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
@@ -1061,37 +1074,48 @@ async function processGenAiValidation({
     }
     await traitDoc.save();
 
-    // Increment counter
-    processedCounter += 1;
-
-    console.log(`✅ DONE | ID=${ID} | Final=${finalScore} | Counter: ${processedCounter}/${expectedCount}`);
-
-    // Check if counter equals expected count
-    if (processedCounter >= expectedCount) {
-      await Trait.updateMany(
-        { processed: false },
-        { $set: { processed: true } }
-
-      )
-      console.log('✅ All GenAI validations completed. Please refresh to fetch latest data.');
-      console.log('✅ Processed:', processedCounter);
-      console.log('✅ Expected:', expectedCount);
-      broadcastUpdate({
-        type: 'process_completed',
-        message: 'All GenAI validations completed. Please refresh to fetch latest data.',
-        processed: processedCounter,
-        expected: expectedCount,
-        timestamp: new Date().toISOString()
-      });
-      // Reset for next batch
-      processedCounter = 0;
-      expectedCount = null;
-    }
-
+    console.log(`✅ DONE | ID=${ID} | Trait=${traitTitle} | Final=${finalScore}`);
     return { success: true, documentId: ID, finalScore };
 
   } catch (err) {
     console.error(`❌ Item failed (${item?.ID})`, err);
     return { success: false, error: err.message };
+  } finally {
+    // Increment counter regardless of success or failure
+    processedCounter += 1;
+
+    if (expectedCount !== null) {
+      console.log(`📈 Progress: ${processedCounter}/${expectedCount}`);
+
+      // Check for completion
+      if (processedCounter >= expectedCount) {
+        const finalProcessed = processedCounter;
+        const finalExpected = expectedCount;
+
+        // Reset immediately to prevent multiple triggers
+        processedCounter = 0;
+        expectedCount = null;
+
+        console.log('🎊 All GenAI validations completed. Updating database...');
+
+        try {
+          await Trait.updateMany(
+            { processed: false },
+            { $set: { processed: true } }
+          );
+
+          broadcastUpdate({
+            type: 'process_completed',
+            message: 'All GenAI validations completed. Please refresh to fetch latest data.',
+            processed: finalProcessed,
+            expected: finalExpected,
+            timestamp: new Date().toISOString()
+          });
+        } catch (dbErr) {
+          console.error('❌ Failed to update documents status:', dbErr);
+        }
+      }
+    }
   }
 }
+

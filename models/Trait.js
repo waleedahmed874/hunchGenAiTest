@@ -35,6 +35,10 @@ const traitSchema = new mongoose.Schema(
       enum: ['context', 'basic'],
       index: true
     },
+    review_status: {
+      type: Boolean,
+      default: false
+    },
     // Initial Reaction Object
     initial_reaction: {
       text: {

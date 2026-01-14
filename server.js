@@ -804,6 +804,45 @@ app.get('/api/traits/db/review', async (req, res) => {
   }
 });
 
+// Update review status
+app.post('/api/traits/status', async (req, res) => {
+  try {
+    const { documentId, isReviewed } = req.body;
+
+    if (!documentId) {
+      return res.status(400).json({
+        success: false,
+        error: 'documentId is required'
+      });
+    }
+
+    const updatedDoc = await Trait.findByIdAndUpdate(
+      documentId,
+      { $set: { review_status: !!isReviewed } },
+      { new: true }
+    );
+
+    if (!updatedDoc) {
+      return res.status(404).json({
+        success: false,
+        error: 'Document not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Review status updated successfully',
+      data: updatedDoc
+    });
+  } catch (error) {
+    console.error('Error updating review status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Get statistics/summary
 app.get('/api/traits/db/stats', async (req, res) => {
   try {

@@ -866,18 +866,22 @@ app.post('/genai-validation-worker', async (req, res) => {
       return res.status(400).send('Invalid payload: model_filename, type, and item are required');
     }
 
-    // ✅ ACK FAST (VERY IMPORTANT)
-    res.status(200).send('OK');
+    // 🧠 Process and wait for completion (CRITICAL for Cloud Run)
+    try {
+      await processGenAiValidation({
+        item,
+        model_filename,
+        type,
+        project_id,
+      });
 
-    // 🧠 Background processing (SAFE)
-    processGenAiValidation({
-      item,
-      model_filename,
-      type,
-      project_id,
-    }).catch(err => {
+      // ✅ ACK only after work is done
+      res.status(200).send('OK');
+    } catch (err) {
       console.error('❌ GenAI worker failed:', err);
-    });
+      // Send 500 so Cloud Tasks retries
+      res.status(500).send('Internal Server Error');
+    }
 
   } catch (err) {
     console.error('❌ Worker endpoint crashed:', err);

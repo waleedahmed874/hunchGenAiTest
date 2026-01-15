@@ -671,10 +671,7 @@ app.post('/api/traits/store-feedback', async (req, res) => {
       message: 'Feedback stored successfully',
       added: addedCount,
       total: items.length,
-      data: {
-        initial_reaction: doc.initial_reaction?.feedback || [],
-        context_prompt: doc.context_prompt?.feedback || []
-      }
+      updatedDoc: doc
     });
 
   } catch (error) {

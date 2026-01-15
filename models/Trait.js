@@ -86,6 +86,10 @@ const traitSchema = new mongoose.Schema(
             required: true
           },
           traitTitle: String,
+          isTraitValidationIncorrect: {
+            type: Boolean,
+            default: false
+          },
           timestamp: {
             type: Date,
             default: Date.now
@@ -142,7 +146,6 @@ const traitSchema = new mongoose.Schema(
             trait: String,
             text: String,
             shouldExist: Boolean,
-
           }
         ]
       },
@@ -172,6 +175,10 @@ const traitSchema = new mongoose.Schema(
             required: true
           },
           traitTitle: String,
+          isTraitValidationIncorrect: {
+            type: Boolean,
+            default: false
+          },
           timestamp: {
             type: Date,
             default: Date.now

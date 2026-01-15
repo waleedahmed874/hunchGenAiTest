@@ -514,24 +514,17 @@ app.post('/api/traits/feedback', async (req, res) => {
     const existing = target.genAiRecords[recordIndex] || {};
 
     // Calculate new values
-    const currentScore = existing.genAiSays?.score ?? 0;
-    const newScore = isTraitValidationIncorrect ? (currentScore === 1 ? 0 : 1) : currentScore;
-
-    // User requested to ignore finalScore, so we preserve the existing value without toggling
-    const finalScore = newScore
+    const currentFinalScore = existing.finalScore ?? 0;
+    const newFinalScore = isTraitValidationIncorrect ? (currentFinalScore === 1 ? 0 : 1) : currentFinalScore;
+    const newAction = isTraitValidationIncorrect ? 'Score change via feedback' : (existing.action ?? 'No change');
 
     const newGenAiSays = {
       ...existing.genAiSays,
-      score: newScore,
-      finalScore: newScore,
-      present: isTraitValidationIncorrect ? (existing.genAiSays?.present === true ? false : true) : existing.genAiSays?.present,
       validationIncorrect: isTraitValidationIncorrect ? true : existing.genAiSays?.validationIncorrect
     };
 
-    const newAction = isTraitValidationIncorrect ? 'Score change via feedback' : existing.action ?? 'No change';
-
     const historyEntry = {
-      finalScore: newScore,
+      finalScore: newFinalScore,
       action: newAction,
       feedback: feedback,
       genAiSays: newGenAiSays,
@@ -541,17 +534,27 @@ app.post('/api/traits/feedback', async (req, res) => {
     const history = existing.history ? [...existing.history] : [];
     history.push(historyEntry);
 
-    // Ensure required fields exist to satisfy schema validation
+    // Update the record
+    const recordToUpdate = existing.toObject ? existing.toObject() : { ...existing };
+
     target.genAiRecords[recordIndex] = {
-      ...existing,
+      ...recordToUpdate,
       llmScore: existing.llmScore ?? 0,
-      finalScore: newScore,
-      action: newAction,
       traitTitle: existing.traitTitle ?? traitName,
-      genAiSays: newGenAiSays,
+      finalScore: newFinalScore,
+      action: newAction,
+      isTraitValidationIncorrect: !!isTraitValidationIncorrect,
       feedback,
       history: history
     };
+
+    // Update traits array based on new finalScore
+    const hasTrait = target.traits.includes(traitName);
+    if (newFinalScore === 1 && !hasTrait) {
+      target.traits.push(traitName);
+    } else if (newFinalScore === 0 && hasTrait) {
+      target.traits = target.traits.filter(t => t !== traitName);
+    }
 
     await doc.save();
 

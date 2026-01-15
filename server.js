@@ -518,11 +518,12 @@ app.post('/api/traits/feedback', async (req, res) => {
     const newScore = isTraitValidationIncorrect ? (currentScore === 1 ? 0 : 1) : currentScore;
 
     // User requested to ignore finalScore, so we preserve the existing value without toggling
-    const finalScore = existing.finalScore ?? currentScore;
+    const finalScore = newScore
 
     const newGenAiSays = {
       ...existing.genAiSays,
       score: newScore,
+      finalScore: newScore,
       present: isTraitValidationIncorrect ? (existing.genAiSays?.present === true ? false : true) : existing.genAiSays?.present,
       validationIncorrect: isTraitValidationIncorrect ? true : existing.genAiSays?.validationIncorrect
     };
@@ -530,7 +531,7 @@ app.post('/api/traits/feedback', async (req, res) => {
     const newAction = isTraitValidationIncorrect ? 'Score change via feedback' : existing.action ?? 'No change';
 
     const historyEntry = {
-      finalScore: finalScore,
+      finalScore: newScore,
       action: newAction,
       feedback: feedback,
       genAiSays: newGenAiSays,
@@ -544,7 +545,7 @@ app.post('/api/traits/feedback', async (req, res) => {
     target.genAiRecords[recordIndex] = {
       ...existing,
       llmScore: existing.llmScore ?? 0,
-      finalScore: finalScore,
+      finalScore: newScore,
       action: newAction,
       traitTitle: existing.traitTitle ?? traitName,
       genAiSays: newGenAiSays,

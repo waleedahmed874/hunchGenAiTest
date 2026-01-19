@@ -982,6 +982,8 @@ startServer();
 // Counter for tracking processed items
 let processedCounter = 0;
 let expectedCount = null;
+let isCalculatingExpected = false;
+let isCompleting = false;
 
 async function processGenAiValidation({
   item,
@@ -990,15 +992,24 @@ async function processGenAiValidation({
   project_id,
 }) {
   // Calculate expected count once at start (from database)
-  if (expectedCount === null) {
-    const initialTraitsCount = traits.filter(t => t.initialReactionEnabled).length;
-    const contextTraitsCount = traits.filter(t => t.contextPromptEnabled).length;
+  if (expectedCount === null && !isCalculatingExpected) {
+    isCalculatingExpected = true;
+    try {
+      const initialTraitsCount = traits.filter(t => t.initialReactionEnabled).length;
+      const contextTraitsCount = traits.filter(t => t.contextPromptEnabled).length;
 
-    const docsWithInitial = await Trait.countDocuments({ processed: false, 'initial_reaction.text': { $exists: true, $ne: '' } });
-    const docsWithContext = await Trait.countDocuments({ processed: false, 'context_prompt.text': { $exists: true, $ne: '' } });
+      const [docsWithInitial, docsWithContext] = await Promise.all([
+        Trait.countDocuments({ processed: false, 'initial_reaction.text': { $exists: true, $ne: '' } }),
+        Trait.countDocuments({ processed: false, 'context_prompt.text': { $exists: true, $ne: '' } })
+      ]);
 
-    expectedCount = (docsWithInitial * initialTraitsCount) + (docsWithContext * contextTraitsCount);
-    console.log(`📊 Expected tasks calculated: ${expectedCount} (${docsWithInitial} docs * ${initialTraitsCount} initial + ${docsWithContext} docs * ${contextTraitsCount} context)`);
+      expectedCount = (docsWithInitial * initialTraitsCount) + (docsWithContext * contextTraitsCount);
+      console.log(`📊 Expected tasks calculated: ${expectedCount}`);
+    } catch (err) {
+      console.error('❌ Error calculating expected count:', err);
+    } finally {
+      isCalculatingExpected = false;
+    }
   }
 
   const matchedTrait = traits.find(t => t.gcsFileName === model_filename);
@@ -1130,13 +1141,10 @@ async function processGenAiValidation({
       console.log(`📈 Progress: ${processedCounter}/${expectedCount}`);
 
       // Check for completion
-      if (processedCounter >= expectedCount) {
+      if (processedCounter >= expectedCount && !isCompleting) {
+        isCompleting = true;
         const finalProcessed = processedCounter;
         const finalExpected = expectedCount;
-
-        // Reset immediately to prevent multiple triggers
-        processedCounter = 0;
-        expectedCount = null;
 
         console.log('🎊 All GenAI validations completed. Updating database...');
 
@@ -1153,8 +1161,14 @@ async function processGenAiValidation({
             expected: finalExpected,
             timestamp: new Date().toISOString()
           });
+
+          // Reset after broadcast
+          processedCounter = 0;
+          expectedCount = null;
+          isCompleting = false;
         } catch (dbErr) {
           console.error('❌ Failed to update documents status:', dbErr);
+          isCompleting = false;
         }
       }
     }

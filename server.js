@@ -1032,28 +1032,31 @@ async function processGenAiValidation({
       return { success: false, error: 'Missing ID' };
     }
 
-    const traitDoc = await Trait.findById(ID);
+    // 1. Only fetch the necessary fields to save memory
+    const traitDoc = await Trait.findById(ID).select(`version project_input concept_input initial_reaction.text context_prompt.text`);
     if (!traitDoc) {
       console.error(`Document not found for ID: ${ID}`);
       return { success: false, error: 'Document not found' };
     }
 
-    let targetObject;
+    let targetText;
+    let fieldPrefix; // To know which field to update (initial_reaction or context_prompt)
+
     if (type === 'INITIAL_REACTION') {
-      targetObject = traitDoc.initial_reaction;
+      targetText = traitDoc.initial_reaction?.text;
+      fieldPrefix = 'initial_reaction';
     } else if (type === 'CONTEXT_PROMPT') {
-      targetObject = traitDoc.context_prompt;
+      targetText = traitDoc.context_prompt?.text;
+      fieldPrefix = 'context_prompt';
     } else {
       console.error(`Invalid type: ${type}`);
       return { success: false, error: `Invalid type: ${type}` };
     }
 
-    if (!targetObject || !targetObject.text) {
-      console.error(`Target object or text not found for ID: ${ID}, type: ${type}`);
-      return { success: false, error: 'Target object or text not found' };
+    if (!targetText) {
+      console.error(`Text not found for ID: ${ID}, type: ${type}`);
+      return { success: false, error: 'Text not found' };
     }
-
-    const text = targetObject.text;
 
     // version logic
     let versionToPass = 'basic';
@@ -1070,7 +1073,7 @@ async function processGenAiValidation({
 
     // Call GenAI API
     const genAiResult = await genAiService.classify(
-      text,
+      targetText,
       traitTitle,
       traitDefinition,
       traitExamples,
@@ -1090,42 +1093,42 @@ async function processGenAiValidation({
     const { action, finalScore } = genAiService.determineAction(llmScore, genAiResponse);
     const needsReview = genAiService.requiresReview(genAiResponse, llmScore);
 
-    // Initialize arrays
-    targetObject.genAiRecords ||= [];
-    targetObject.traits ||= [];
-    targetObject.reviewTags ||= [];
-
-    const hasTrait = targetObject.traits.includes(traitTitle);
-
-    // Create GenAI record
-    const genAiRecord = {
-      llmScore,
-      genAiSays: {
-        present: genAiResponse.present,
-        confidence: genAiResponse.confidence,
-        rationale: genAiResponse.rationale,
-        score: genAiResponse.score
-      },
-      finalScore,
-      action,
-      traitTitle,
-      timestamp: new Date()
+    // 2. Prepare Atomic Update
+    const updateQuery = {
+      $push: {
+        [`${fieldPrefix}.genAiRecords`]: {
+          llmScore,
+          genAiSays: {
+            present: genAiResponse.present,
+            confidence: genAiResponse.confidence,
+            rationale: genAiResponse.rationale,
+            score: genAiResponse.score
+          },
+          finalScore,
+          action,
+          traitTitle,
+          timestamp: new Date()
+        }
+      }
     };
 
-    targetObject.genAiRecords.push(genAiRecord);
-
-    // Update traits
-    if (finalScore === 1 && !hasTrait) {
-      targetObject.traits.push(traitTitle);
-    } else if (finalScore === 0 && hasTrait) {
-      targetObject.traits = targetObject.traits.filter(t => t !== traitTitle);
+    // Update traits array based on finalScore
+    if (finalScore === 1) {
+      updateQuery.$addToSet = { [`${fieldPrefix}.traits`]: traitTitle };
+    } else {
+      updateQuery.$pull = { [`${fieldPrefix}.traits`]: traitTitle };
     }
 
     // Add review tag if needed
-    if (needsReview && !targetObject.reviewTags.includes(traitTitle)) {
-      targetObject.reviewTags.push(traitTitle);
+    if (needsReview) {
+      updateQuery.$addToSet = {
+        ...updateQuery.$addToSet,
+        [`${fieldPrefix}.reviewTags`]: traitTitle
+      };
     }
-    await traitDoc.save();
+
+    // 3. Execute Atomic Update
+    await Trait.updateOne({ _id: ID }, updateQuery);
 
     console.log(`✅ DONE | ID=${ID} | Trait=${traitTitle} | Final=${finalScore}`);
     return { success: true, documentId: ID, finalScore };

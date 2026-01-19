@@ -906,22 +906,24 @@ app.post('/genai-validation-worker', async (req, res) => {
       return res.status(400).send('Invalid payload: model_filename, type, and item are required');
     }
 
-    // ✅ ACK FAST (VERY IMPORTANT)
-    res.status(200).send('OK');
-
-    // 🧠 Background processing (SAFE)
-    processGenAiValidation({
+    // 🧠 Process the task
+    const result = await processGenAiValidation({
       item,
       model_filename,
       type,
       project_id,
-    }).catch(err => {
-      console.error('❌ GenAI worker failed:', err);
     });
+
+    if (result.success) {
+      res.status(200).send('OK');
+    } else {
+      console.error('❌ GenAI worker failed:', result.error);
+      res.status(500).send(`Worker failed: ${result.error}`);
+    }
 
   } catch (err) {
     console.error('❌ Worker endpoint crashed:', err);
-    res.status(400).send('Bad Request');
+    res.status(500).send('Internal Server Error');
   }
 });
 // Delete all trait documents from database

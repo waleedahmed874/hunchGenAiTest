@@ -7,8 +7,7 @@ const axios = require('axios');
 class GenAiService {
   constructor() {
     this.apiUrl = 'https://data-science-dev-git-320866101884.us-central1.run.app/classify';
-    this.confidenceThreshold = 0.90;
-    this.reviewThreshold = 0.80; // Review threshold for human review
+    this.confidenceThreshold = 0.80; // Single threshold as requested
   }
 
   /**
@@ -58,107 +57,63 @@ class GenAiService {
 
   /**
    * Determine if human review is required
-   * Human review is required ONLY when score is changing AND confidence < 0.80
-   * @param {Object} genAiResponse - GenAI API response
-   * @param {number} llmScore - Original LLM score (commentPrediction)
-   * @returns {boolean} Whether human review is required
+   * Review is required if GenAI disagrees but confidence is below 80%
    */
   requiresReview(genAiResponse, llmScore) {
-    if (!genAiResponse || genAiResponse.present === undefined) {
-      return false;
-    }
+    if (!genAiResponse || genAiResponse.present === undefined) return false;
 
-    const { confidence, present } = genAiResponse;
-    const genAiScore = present ? 1 : 0;
+    const genAiScore = genAiResponse.present ? 1 : 0;
+    const confValue = typeof genAiResponse.confidence === 'number'
+      ? genAiResponse.confidence
+      : parseFloat(genAiResponse.confidence);
 
-    // Review required ONLY if score is changing AND confidence < 0.80
-    // Convert confidence to number to handle string values
-    const confValue = typeof confidence === 'number' ? confidence : parseFloat(confidence);
-    if (genAiScore !== llmScore && confValue < this.reviewThreshold) {
-      return true;
-    }
-
-    return false;
+    // If they disagree and confidence is low, it needs review
+    return (genAiScore !== llmScore && confValue < this.confidenceThreshold);
   }
 
   /**
    * Determine the action based on LLM score and GenAI response
-   * Decision Matrix:
-   * - LLM Score = 1, GenAI Says = Yes (conf > 0.90) → Final Score = 1, Action = No change
-   * - LLM Score = 1, GenAI Says = No (conf > 0.90) → Final Score = 0, Action = Score removed
-   * - LLM Score = 0, GenAI Says = Yes (conf > 0.90) → Final Score = 1, Action = Score added
-   * - LLM Score = 0, GenAI Says = No → Final Score = 0, Action = No change
-   * - Score changing AND confidence < 0.80 → Final Score = Original, Action = Human review required
-   * 
-   * @param {number} llmScore - Original LLM score (commentPrediction)
-   * @param {Object} genAiResponse - GenAI API response
-   * @returns {Object} Action details
+   * Simplified Logic based on Client Table:
+   * - Agree: LLM Score == GenAI Score (Any confidence)
+   * - Disagree: LLM Score != GenAI Score (Confidence >= 80%)
+   * - Review: LLM Score != GenAI Score (Confidence < 80%)
    */
   determineAction(llmScore, genAiResponse) {
     if (!genAiResponse || genAiResponse.present === undefined) {
       return {
-        action: 'No change',
+        action: 'Agree',
         finalScore: llmScore,
-        reason: 'GenAI API failed or invalid response'
+        reason: ''
       };
     }
 
-    const { present, confidence } = genAiResponse;
+    const { present, confidence, rationale } = genAiResponse;
     const genAiScore = present ? 1 : 0;
-
-    // Convert confidence to number to handle string values
     const confValue = typeof confidence === 'number' ? confidence : parseFloat(confidence);
 
-    // Check if human review is required (score changing AND confidence < 0.80)
-    if (this.requiresReview(genAiResponse, llmScore)) {
+    // CASE 1: Agreement (Yes/Yes or No/No)
+    if (llmScore === genAiScore) {
       return {
-        action: 'Human review required',
-        finalScore: llmScore, // Keep original score until review
-        reason: 'Score change detected with low confidence (< 0.80)'
+        action: 'Agree',
+        finalScore: llmScore,
+        reason: '' // Blank rationale for agreement as requested
       };
     }
 
-    // LLM Score = 1, GenAI Says = Yes (conf >= 0.90) → No change
-    if (llmScore === 1 && present === true && confValue >= this.confidenceThreshold) {
+    // CASE 2 & 3: Disagreement with High Confidence (>= 80%)
+    if (confValue >= this.confidenceThreshold) {
       return {
-        action: 'No change',
-        finalScore: 1,
-        reason: 'High confidence match, no change needed'
+        action: 'Disagree',
+        finalScore: genAiScore, // Follow GenAI's recommendation
+        reason: rationale || 'GenAI recommends a change based on analysis.'
       };
     }
 
-    // LLM Score = 1, GenAI Says = No (conf >= 0.90) → Score removed
-    if (llmScore === 1 && present === false && confValue >= this.confidenceThreshold) {
-      return {
-        action: 'Score removed',
-        finalScore: 0,
-        reason: 'GenAI confirmed trait absence with high confidence'
-      };
-    }
-
-    // LLM Score = 0, GenAI Says = Yes (conf >= 0.90) → Score added
-    if (llmScore === 0 && present === true && confValue >= this.confidenceThreshold) {
-      return {
-        action: 'Score added',
-        finalScore: 1,
-        reason: 'GenAI confirmed trait presence with high confidence'
-      };
-    }
-
-    // LLM Score = 0, GenAI Says = No → No change
-    if (llmScore === 0 && present === false) {
-      return {
-        action: 'No change',
-        finalScore: 0,
-        reason: 'Both LLM and GenAI agree trait is not present'
-      };
-    }
-
-    // Default: no change (should not reach here, but safety fallback)
+    // CASE 4: Disagreement with Low Confidence (< 80%)
     return {
-      action: 'No change',
-      finalScore: llmScore,
-      reason: 'No significant change detected'
+      action: 'Human review required',
+      finalScore: llmScore, // Keep original score but flag for review
+      reason: rationale || 'GenAI suggested a change but confidence is low.'
     };
   }
 }

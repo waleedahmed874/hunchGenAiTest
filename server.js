@@ -515,12 +515,12 @@ app.post('/api/traits/feedback', async (req, res) => {
 
     // Calculate new values
     const currentFinalScore = existing.finalScore ?? 0;
-    const newFinalScore = isTraitValidationIncorrect ? (currentFinalScore === 1 ? 0 : 1) : currentFinalScore;
-    const newAction = isTraitValidationIncorrect ? 'Score change via feedback' : (existing.action ?? 'No change');
+    const newFinalScore = isTraitValidationIncorrect
+    const newAction = isTraitValidationIncorrect !== currentFinalScore ? 'Score change via feedback' : (existing.action ?? 'No change');
 
     const newGenAiSays = {
       ...existing.genAiSays,
-      validationIncorrect: isTraitValidationIncorrect ? true : existing.genAiSays?.validationIncorrect
+      validationIncorrect: isTraitValidationIncorrect
     };
 
     const historyEntry = {
@@ -543,7 +543,7 @@ app.post('/api/traits/feedback', async (req, res) => {
       traitTitle: existing.traitTitle ?? traitName,
       finalScore: newFinalScore,
       action: newAction,
-      isTraitValidationIncorrect: !!isTraitValidationIncorrect,
+      isTraitValidationIncorrect: isTraitValidationIncorrect,
       feedback,
       history: history
     };

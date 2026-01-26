@@ -87,8 +87,7 @@ const traitSchema = new mongoose.Schema(
           },
           traitTitle: String,
           isTraitValidationIncorrect: {
-            type: Boolean,
-            default: false
+            type: Number,
           },
           timestamp: {
             type: Date,
@@ -104,7 +103,7 @@ const traitSchema = new mongoose.Schema(
                 confidence: Number,
                 rationale: String,
                 score: Number,
-                validationIncorrect: Boolean
+                validationIncorrect: Number
               },
               timestamp: {
                 type: Date,

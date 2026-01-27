@@ -907,19 +907,27 @@ app.post('/genai-validation-worker', async (req, res) => {
     }
 
     // 🧠 Process the task
-    const result = await processGenAiValidation({
-      item,
-      model_filename,
-      type,
-      project_id,
-    });
+    // ⚡️ Pro Technique: Fire & Forget
+    // Respond immediately to handling the request "so fast"
+    res.status(200).send('OK');
 
-    if (result.success) {
-      res.status(200).send('OK');
-    } else {
-      console.error('❌ GenAI worker failed:', result.error);
-      res.status(500).send(`Worker failed: ${result.error}`);
-    }
+    // Run the heavy lifting in the background
+    setImmediate(async () => {
+      try {
+        const result = await processGenAiValidation({
+          item,
+          model_filename,
+          type,
+          project_id,
+        });
+
+        if (!result.success) {
+          console.error('❌ GenAI worker background task failed:', result.error);
+        }
+      } catch (backgroundError) {
+        console.error('❌ GenAI worker background wrapper crashed:', backgroundError);
+      }
+    });
 
   } catch (err) {
     console.error('❌ Worker endpoint crashed:', err);

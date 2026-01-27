@@ -882,35 +882,6 @@ app.get('/api/traits/db/stats', async (req, res) => {
     });
   }
 });
-// 🚦 Concurrency Control for GenAI
-class ConcurrencyQueue {
-  constructor(concurrency) {
-    this.concurrency = concurrency;
-    this.active = 0;
-    this.queue = [];
-  }
-
-  add(fn) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ fn, resolve, reject });
-      this.tryNext();
-    });
-  }
-
-  tryNext() {
-    if (this.active >= this.concurrency || this.queue.length === 0) return;
-
-    this.active++;
-    const { fn, resolve, reject } = this.queue.shift();
-
-    fn().then(resolve).catch(reject).finally(() => {
-      this.active--;
-      this.tryNext();
-    });
-  }
-}
-const genAiLimitQueue = new ConcurrencyQueue(30);
-
 app.post('/genai-validation-worker', async (req, res) => {
   try {
     // 🔴 Cloud Tasks body is BASE64
@@ -941,7 +912,7 @@ app.post('/genai-validation-worker', async (req, res) => {
     res.status(200).send('OK');
 
     // Run the heavy lifting in the background
-    genAiLimitQueue.add(async () => {
+    setImmediate(async () => {
       try {
         const result = await processGenAiValidation({
           item,

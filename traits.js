@@ -712,7 +712,12 @@ const traits = [
         "traitType": "primary",
         "parentTraits": [],
         "trait_definition": "Fixable vibe is when someone is suggesting or implying that a concept should be changed, improved, or fixed in any way to make it more appealing, relevant, or to otherwise optimize chances for market success (e.g., \"offer it in a strawberry flavor\" or \"the packaging needs more color\"). Fixable vibe can also be implied when someone expresses skepticism or hesitation, with enough context to indicate that the reason is tangibly fixable. For example, \"Sounds good, but the packaging is boring\" or \"Like the idea, but not into these particular flavors.\"",
-        "trait_examples": "I think you should not mention poop like that so often. Talk about the smell rather than the poop. | I love cold brew & I love green tea; however, I feel like people will not be interested in it because all they will think about are the two being mixed together, which would definitely not taste good. Market it with an added natural boost of caffeine & let people who care to know more research the green tea part on their own. | It's a good idea, but the description is a little wordy. | I like it but I'd add some additional color options."
+        "trait_examples": [
+            "I think you should not mention poop like that so often. Talk about the smell rather than the poop.",
+            "I love cold brew & I love green tea; however, I feel like people will not be interested in it because all they will think about are the two being mixed together, which would definitely not taste good. Market it with an added natural boost of caffeine & let people who care to know more research the green tea part on their own.",
+            "It's a good idea, but the description is a little wordy.",
+            "I like it but I'd add some additional color options."
+        ]
     }
 ]
 

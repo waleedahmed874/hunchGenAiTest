@@ -515,8 +515,8 @@ app.post('/api/traits/feedback', async (req, res) => {
 
     // Calculate new values
     const currentFinalScore = existing.finalScore ?? 0;
-    const newFinalScore = isTraitValidationIncorrect
-    const newAction = isTraitValidationIncorrect !== currentFinalScore ? 'Score change via feedback' : (existing.action ?? 'No change');
+    const newFinalScore = isTraitValidationIncorrect; // Frontend sends 0 or 1 directly
+    const newAction = newFinalScore !== currentFinalScore ? 'Score change via feedback' : (existing.action ?? 'No change');
 
     const newGenAiSays = {
       ...existing.genAiSays,

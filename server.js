@@ -558,6 +558,16 @@ app.post('/api/traits/feedback', async (req, res) => {
 
     await doc.save();
 
+    // Broadcast update to all connected clients
+    broadcastUpdate({
+      type: 'feedback_added',
+      documentId: documentId,
+      traitName: traitName,
+      feedbackType: type,
+      updatedDoc: doc,
+      timestamp: new Date().toISOString()
+    });
+
     return res.json({
       success: true,
       message: 'Feedback added to genAiRecord',

@@ -524,7 +524,7 @@ app.post('/api/traits/feedback', async (req, res) => {
     };
 
     const historyEntry = {
-      finalScore: newFinalScore,
+      finalScore: currentFinalScore,
       action: newAction,
       feedback: feedback,
       genAiSays: newGenAiSays,

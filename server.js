@@ -840,7 +840,14 @@ app.post('/api/traits/status', async (req, res) => {
       });
     }
 
-    res.json({
+    broadcastUpdate({
+      type: 'review_status_updated',
+      documentId: documentId,
+      updatedDoc: updatedDoc,
+      timestamp: new Date().toISOString()
+    });
+
+   return res.json({
       success: true,
       message: 'Review status updated successfully',
       data: updatedDoc

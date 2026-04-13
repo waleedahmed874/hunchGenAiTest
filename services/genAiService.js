@@ -6,7 +6,7 @@ const axios = require('axios');
  */
 class GenAiService {
   constructor() {
-    this.apiUrl = 'https://data-science-dev-git-320866101884.us-central1.run.app/classify';
+    this.apiUrl = 'https://data-science-dev-git-320866101884.us-central1.run.app/batch_classify';
     this.confidenceThreshold = 0.80; // Single threshold as requested
   }
 
@@ -19,6 +19,80 @@ class GenAiService {
    * @param {string} version - API version (default: 'basic')
    * @returns {Promise<Object>} GenAI response
    */
+  /**
+   * Bulk classify: send one reaction text, get verdicts for ALL traits in one call.
+   * Payload: { version, text } (+ project_input/concept_input when version is context)
+   */
+  async classifyAll(text, version = 'basic', projectInput = '', conceptInput = '', reactionType = 'initial_reaction') {
+    try {
+      const payload = {
+        text: text != null ? String(text).trim() : '',
+        version: version === 'context' ? 'context' : 'basic',
+        reaction_type: reactionType
+      };
+      if (payload.version === 'context') {
+        payload.project_input = projectInput != null ? String(projectInput).trim() : '';
+        payload.concept_input = conceptInput != null ? String(conceptInput).trim() : '';
+      }
+      const response = await axios.post(this.apiUrl, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 300000
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error('GenAI bulk API Error:', error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      }
+      return { success: false, error: error.message, data: null };
+    }
+  }
+
+  /**
+   * Pick one trait's verdict from a bulk classify response.
+   * Supports multiple response shapes: { results: [...] }, array, or keyed object.
+   */
+  extractTraitFromBulk(bulkData, traitTitle) {
+    if (!bulkData || traitTitle == null) return null;
+    const titleLower = String(traitTitle).trim().toLowerCase();
+
+    const normalize = (row) => {
+      if (!row || row.present === undefined) return null;
+      return { present: row.present, confidence: row.confidence, rationale: row.rationale, score: row.score };
+    };
+
+    const matchName = (x) => {
+      const n = x.trait ?? x.trait_title ?? x.traitTitle ?? x.name ?? x.title;
+      return n && String(n).trim().toLowerCase() === titleLower;
+    };
+
+    // Shape: { results: [...] } or { traits: [...] } etc.
+    for (const key of ['results', 'traits', 'predictions', 'data', 'classifications']) {
+      if (Array.isArray(bulkData[key])) {
+        const hit = bulkData[key].find(matchName);
+        if (hit) return normalize(hit);
+      }
+    }
+
+    // Shape: top-level array
+    if (Array.isArray(bulkData)) {
+      const hit = bulkData.find(matchName);
+      if (hit) return normalize(hit);
+    }
+
+    // Shape: keyed object { "Foresight": { present, confidence, ... } }
+    if (typeof bulkData === 'object' && !Array.isArray(bulkData)) {
+      for (const k of Object.keys(bulkData)) {
+        if (String(k).trim().toLowerCase() === titleLower) {
+          return normalize(bulkData[k]);
+        }
+      }
+    }
+
+    return null;
+  }
+
   async classify(text, traitTitle, traitDefinition, traitExamples, version = 'basic', projectInput = '', conceptInput = '') {
     try {
       const payload = {

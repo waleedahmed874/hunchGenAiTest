@@ -41,7 +41,7 @@ class GenAiQueueService {
     return response;
   }
 
-  async enqueueGenAiBatch() {
+  async enqueueGenAiForDocument(documentId) {
     const {
       GCLOUD_PROJECT,
       GCLOUD_LOCATION,
@@ -58,7 +58,7 @@ class GenAiQueueService {
     const workerUrl = `${baseUrl}/genai-batch-worker`;
 
     const body = Buffer
-      .from(JSON.stringify({ trigger: 'ml_complete', timestamp: new Date().toISOString() }))
+      .from(JSON.stringify({ documentId, timestamp: new Date().toISOString() }))
       .toString('base64');
 
     const task = {
@@ -77,6 +77,7 @@ class GenAiQueueService {
     };
 
     const [response] = await this.client.createTask({ parent, task });
+    console.log(`📤 Cloud Task enqueued for document: ${documentId}`);
     return response;
   }
 }

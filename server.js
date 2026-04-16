@@ -479,10 +479,10 @@ app.post('/trait-prediction', async (req, res) => {
       mlProgress: { received: mlReceivedCount, expected: mlExpectedCount }
     });
 
-    // Step 4: Check if ALL ML callbacks are received → trigger GenAI batch
+    // Step 4: Check if ALL ML callbacks are received → trigger per-document GenAI tasks
     if (mlExpectedCount !== null && mlReceivedCount >= mlExpectedCount && !isGenAiBatchTriggered) {
       isGenAiBatchTriggered = true;
-      console.log(`🎯 All ML predictions received (${mlReceivedCount}/${mlExpectedCount}). Triggering GenAI batch processing...`);
+      console.log(`🎯 All ML predictions received (${mlReceivedCount}/${mlExpectedCount}). Enqueuing per-document GenAI tasks...`);
 
       broadcastUpdate({
         type: 'ml_collection_complete',
@@ -492,8 +492,15 @@ app.post('/trait-prediction', async (req, res) => {
         timestamp: new Date().toISOString()
       });
 
+      const pendingDocs = await Trait.find({ processed: false }).select('_id').lean();
+      genAiExpectedDocs = pendingDocs.length;
+      genAiProcessedDocs = 0;
+
       const genAiQueue = require('./GenAiQueueService');
-      await genAiQueue.enqueueGenAiBatch();
+      for (const doc of pendingDocs) {
+        await genAiQueue.enqueueGenAiForDocument(doc._id.toString());
+      }
+      console.log(`📤 Enqueued ${pendingDocs.length} per-document GenAI tasks`);
     }
 
   } catch (err) {
@@ -954,48 +961,59 @@ app.get('/api/traits/db/stats', async (req, res) => {
 });
 app.post('/genai-batch-worker', async (req, res) => {
   try {
+    const { documentId } = req.body;
+    if (!documentId) {
+      return res.status(400).json({ success: false, error: 'documentId is required' });
+    }
+
     res.status(200).send('OK');
 
     setImmediate(async () => {
       try {
-        console.log('🚀 GenAI batch processing started...');
+        console.log(`🚀 GenAI processing document: ${documentId}`);
 
-        const pendingDocs = await Trait.find({ processed: false }).lean();
-        console.log(`📋 Found ${pendingDocs.length} documents to process with GenAI`);
+        await processDocumentGenAi(documentId);
+        await Trait.updateOne({ _id: documentId }, { $set: { processed: true } });
 
-        let processed = 0;
-        let failed = 0;
+        genAiProcessedDocs++;
+        console.log(`📈 GenAI progress: ${genAiProcessedDocs}/${genAiExpectedDocs}`);
 
-        for (const doc of pendingDocs) {
-          try {
-            await processDocumentGenAi(doc._id.toString());
-            processed++;
-            console.log(`📈 GenAI batch progress: ${processed}/${pendingDocs.length}`);
-          } catch (docErr) {
-            failed++;
-            console.error(`❌ GenAI failed for doc ${doc._id}:`, docErr.message);
-          }
+        if (genAiExpectedDocs > 0 && genAiProcessedDocs >= genAiExpectedDocs) {
+          broadcastUpdate({
+            type: 'process_completed',
+            message: 'All GenAI validations completed. Please refresh to fetch latest data.',
+            processed: genAiProcessedDocs,
+            total: genAiExpectedDocs,
+            timestamp: new Date().toISOString()
+          });
+
+          console.log(`🎊 All ${genAiExpectedDocs} documents processed with GenAI`);
+
+          mlReceivedCount = 0;
+          mlExpectedCount = null;
+          isGenAiBatchTriggered = false;
+          genAiExpectedDocs = 0;
+          genAiProcessedDocs = 0;
         }
+      } catch (docErr) {
+        genAiProcessedDocs++;
+        console.error(`❌ GenAI failed for doc ${documentId}:`, docErr.message);
 
-        await Trait.updateMany({ processed: false }, { $set: { processed: true } });
+        if (genAiExpectedDocs > 0 && genAiProcessedDocs >= genAiExpectedDocs) {
+          broadcastUpdate({
+            type: 'process_completed',
+            message: 'GenAI validations completed (with some errors).',
+            processed: genAiProcessedDocs,
+            total: genAiExpectedDocs,
+            timestamp: new Date().toISOString()
+          });
 
-        broadcastUpdate({
-          type: 'process_completed',
-          message: 'All GenAI validations completed. Please refresh to fetch latest data.',
-          processed,
-          failed,
-          total: pendingDocs.length,
-          timestamp: new Date().toISOString()
-        });
-
-        // Reset counters for next batch
-        mlReceivedCount = 0;
-        mlExpectedCount = null;
-        isGenAiBatchTriggered = false;
-
-        console.log(`🎊 GenAI batch complete: ${processed} processed, ${failed} failed out of ${pendingDocs.length}`);
-      } catch (batchErr) {
-        console.error('❌ GenAI batch worker crashed:', batchErr);
+          mlReceivedCount = 0;
+          mlExpectedCount = null;
+          isGenAiBatchTriggered = false;
+          genAiExpectedDocs = 0;
+          genAiProcessedDocs = 0;
+        }
       }
     });
 
@@ -1061,6 +1079,10 @@ startServer();
 let mlReceivedCount = 0;
 let mlExpectedCount = null;
 let isGenAiBatchTriggered = false;
+
+// GenAI per-document completion tracking
+let genAiExpectedDocs = 0;
+let genAiProcessedDocs = 0;
 
 // Child → Parent(s) map: secondary trait is valid only if at least one parent is present
 const PARENT_CHILD_MAP = {
@@ -1173,13 +1195,20 @@ async function processDocumentGenAi(documentId) {
       console.log(`  ✅ ${traitTitle} | LLM=${llmScore} GenAI=${genAiResponse.present ? 1 : 0} → Final=${finalScore} (${action})`);
     }
 
-    // Parent-child check on traits[]: child stays only if parent is in traits[]
+    // Parent-child check based on ML (llmScore): build set of parents where ML=1
+    const mlPresentTraits = new Set();
+    for (const record of target.genAiRecords || []) {
+      if (record.llmScore === 1) {
+        mlPresentTraits.add(record.traitTitle);
+      }
+    }
+
     for (const childTrait of [...updatedTraits]) {
       const parents = PARENT_CHILD_MAP[childTrait];
       if (!parents) continue;
-      const hasParent = parents.some(p => updatedTraits.has(p));
+      const hasParent = parents.some(p => mlPresentTraits.has(p));
       if (!hasParent) {
-        console.log(`  🚫 ${childTrait} removed from traits[] — parent not present (needs: ${parents.join(' or ')})`);
+        console.log(`  🚫 ${childTrait} removed from traits[] — ML parent not present (needs: ${parents.join(' or ')})`);
         updatedTraits.delete(childTrait);
       }
     }

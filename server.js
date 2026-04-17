@@ -1224,6 +1224,7 @@ async function processDocumentGenAi(documentId) {
       }
     }
 
+    const removedChildren = new Set();
     for (const childTrait of [...mlTraitSet]) {
       const parents = PARENT_CHILD_MAP[childTrait];
       if (!parents) continue;
@@ -1231,6 +1232,20 @@ async function processDocumentGenAi(documentId) {
       if (!hasParent) {
         console.log(`  🚫 ${childTrait} removed from ${fieldPrefix}.traits[] — ML parent not present (needs: ${parents.join(' or ')})`);
         mlTraitSet.delete(childTrait);
+        removedChildren.add(childTrait);
+      }
+    }
+
+    // Update genAiRecords for removed children: set llmScore=0, finalScore=0
+    if (removedChildren.size > 0) {
+      for (const record of target.genAiRecords || []) {
+        if (removedChildren.has(record.traitTitle) && record.llmScore === 1) {
+          record.llmScore = 0;
+          record.finalScore = 0;
+          record.action = 'parent_absent';
+          record.timestamp = new Date();
+          console.log(`    ↳ ${record.traitTitle} | llmScore=0, finalScore=0 (parent_absent)`);
+        }
       }
     }
 

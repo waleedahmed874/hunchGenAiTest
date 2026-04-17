@@ -446,22 +446,24 @@ app.post('/trait-prediction', async (req, res) => {
     // Step 1: Save ML predictions to DB immediately (bulk)
     const bulkOps = data
       .filter(item => item?.ID)
-      .map(item => ({
-        updateOne: {
-          filter: { _id: item.ID },
-          update: {
-            $push: {
-              [`${fieldPrefix}.genAiRecords`]: {
-                llmScore: Number(item.commentPrediction),
-                traitTitle,
-                action: 'pending_genai',
-                finalScore: Number(item.commentPrediction),
-                timestamp: new Date()
-              }
+      .map(item => {
+        const mlScore = Number(item.commentPrediction);
+        const update = {
+          $push: {
+            [`${fieldPrefix}.genAiRecords`]: {
+              llmScore: mlScore,
+              traitTitle,
+              action: 'pending_genai',
+              finalScore: mlScore,
+              timestamp: new Date()
             }
           }
+        };
+        if (mlScore === 1) {
+          update.$addToSet = { [`${fieldPrefix}.traits`]: traitTitle };
         }
-      }));
+        return { updateOne: { filter: { _id: item.ID }, update } };
+      });
 
     if (bulkOps.length > 0) {
       await Trait.bulkWrite(bulkOps, { ordered: false });
@@ -492,7 +494,31 @@ app.post('/trait-prediction', async (req, res) => {
         timestamp: new Date().toISOString()
       });
 
-      const pendingDocs = await Trait.find({ processed: false }).select('_id').lean();
+      const pendingDocs = await Trait.find({ processed: false });
+
+      // Parent-child check on ML traits[] before GenAI
+      for (const doc of pendingDocs) {
+        let changed = false;
+        for (const field of ['initial_reaction', 'context_prompt']) {
+          const target = doc[field];
+          if (!target || !target.traits || target.traits.length === 0) continue;
+          const traitSet = new Set(target.traits);
+          for (const childTrait of [...traitSet]) {
+            const parents = PARENT_CHILD_MAP[childTrait];
+            if (!parents) continue;
+            const hasParent = parents.some(p => traitSet.has(p));
+            if (!hasParent) {
+              console.log(`🚫 ${childTrait} removed from ${field}.traits[] — parent not present (needs: ${parents.join(' or ')})`);
+              traitSet.delete(childTrait);
+              changed = true;
+            }
+          }
+          target.traits = Array.from(traitSet);
+        }
+        if (changed) await doc.save();
+      }
+      console.log(`✅ Parent-child validation done for ${pendingDocs.length} documents`);
+
       genAiExpectedDocs = pendingDocs.length;
       genAiProcessedDocs = 0;
 
@@ -1154,7 +1180,6 @@ async function processDocumentGenAi(documentId) {
     }
 
     const bulkData = bulkResult.data;
-    const updatedTraits = new Set(target.traits || []);
     const updatedReviewTags = new Set(target.reviewTags || []);
 
     for (const record of pendingRecords) {
@@ -1182,12 +1207,6 @@ async function processDocumentGenAi(documentId) {
       record.action = action;
       record.timestamp = new Date();
 
-      if (finalScore === 1) {
-        updatedTraits.add(traitTitle);
-      } else {
-        updatedTraits.delete(traitTitle);
-      }
-
       if (needsReview) {
         updatedReviewTags.add(traitTitle);
       }
@@ -1195,25 +1214,6 @@ async function processDocumentGenAi(documentId) {
       console.log(`  ✅ ${traitTitle} | LLM=${llmScore} GenAI=${genAiResponse.present ? 1 : 0} → Final=${finalScore} (${action})`);
     }
 
-    // Parent-child check based on ML (llmScore): build set of parents where ML=1
-    const mlPresentTraits = new Set();
-    for (const record of target.genAiRecords || []) {
-      if (record.llmScore === 1) {
-        mlPresentTraits.add(record.traitTitle);
-      }
-    }
-
-    for (const childTrait of [...updatedTraits]) {
-      const parents = PARENT_CHILD_MAP[childTrait];
-      if (!parents) continue;
-      const hasParent = parents.some(p => mlPresentTraits.has(p));
-      if (!hasParent) {
-        console.log(`  🚫 ${childTrait} removed from traits[] — ML parent not present (needs: ${parents.join(' or ')})`);
-        updatedTraits.delete(childTrait);
-      }
-    }
-
-    target.traits = Array.from(updatedTraits);
     target.reviewTags = Array.from(updatedReviewTags);
   }
 

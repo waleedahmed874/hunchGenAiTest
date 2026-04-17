@@ -1215,6 +1215,26 @@ async function processDocumentGenAi(documentId) {
     }
 
     target.reviewTags = Array.from(updatedReviewTags);
+
+    // Build traits[] from ML (llmScore=1) with dedup, then apply parent-child filter
+    const mlTraitSet = new Set();
+    for (const record of target.genAiRecords || []) {
+      if (record.llmScore === 1) {
+        mlTraitSet.add(record.traitTitle);
+      }
+    }
+
+    for (const childTrait of [...mlTraitSet]) {
+      const parents = PARENT_CHILD_MAP[childTrait];
+      if (!parents) continue;
+      const hasParent = parents.some(p => mlTraitSet.has(p));
+      if (!hasParent) {
+        console.log(`  🚫 ${childTrait} removed from ${fieldPrefix}.traits[] — ML parent not present (needs: ${parents.join(' or ')})`);
+        mlTraitSet.delete(childTrait);
+      }
+    }
+
+    target.traits = Array.from(mlTraitSet);
   }
 
   await doc.save();

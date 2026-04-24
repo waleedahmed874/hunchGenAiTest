@@ -1,4 +1,16 @@
-const traits = [
+// Only these traits are queued for ML (Cloud Tasks) for now. Others keep full
+// config in the array but are disabled so process flow skips them.
+// To re-enable: add title to the set, or remove the map below.
+const ML_ENABLED_TRAIT_TITLES = new Set([
+  'Emotive Delight',
+  'Foresight',
+  '(FORESIGHT) Expressed Intent',
+  'Negativity',
+  'Neutrality',
+  '(NOT FOR ME) Outright Rejection',
+]);
+
+const _traits = [
     {
         "_id": "6178f26523c29c21b201d767",
         "gcsFileName": "Foresight.h5",
@@ -715,6 +727,17 @@ const traits = [
         "trait_examples": "I think you should not mention poop like that so often. Talk about the smell rather than the poop. | I love cold brew & I love green tea; however, I feel like people will not be interested in it because all they will think about are the two being mixed together, which would definitely not taste good. Market it with an added natural boost of caffeine & let people who care to know more research the green tea part on their own. | It's a good idea, but the description is a little wordy. | I like it but I'd add some additional color options."
 
     }
-]
+];
+
+const traits = _traits.map((t) => {
+  if (ML_ENABLED_TRAIT_TITLES.has(t.title)) {
+    return t;
+  }
+  return {
+    ...t,
+    initialReactionEnabled: false,
+    contextPromptEnabled: false,
+  };
+});
 
 module.exports = { traits };

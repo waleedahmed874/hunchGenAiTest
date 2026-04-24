@@ -3,12 +3,17 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
+const multer = require('multer');
+const { parse: csvParse } = require('csv-parse/sync');
+const { stringify: csvStringify } = require('csv-stringify/sync');
 const database = require('./db');
 const { traits } = require('./traits');
 const { initialReactions, contextPrompts } = require('./reaction');
 const GCloudService = require('./gcloudService');
 const Trait = require('./models/Trait');
 const genAiService = require('./services/genAiService');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
 // Request Queue for handling GenAI API calls sequentially
 
@@ -132,8 +137,8 @@ function broadcastUpdate(data) {
 app.use(cors());
 
 // Middleware to parse JSON bodies
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1gb' }));
+app.use(express.urlencoded({ extended: true, limit: '1gb' }));
 
 // Helper function
 function generateObjectId() {
@@ -420,7 +425,13 @@ app.post('/api/traits/process', async (req, res) => {
   }
 });
 
-app.use(express.text({ type: '*/*' }));
+app.use((req, res, next) => {
+  const ct = req.headers['content-type'] || '';
+  if (ct.includes('multipart/form-data') || ct.includes('application/json') || ct.includes('application/x-www-form-urlencoded')) {
+    return next();
+  }
+  return express.text({ type: '*/*', limit: '1gb' })(req, res, next);
+});
 
 app.post('/trait-prediction', async (req, res) => {
   try {
@@ -1066,6 +1077,458 @@ app.delete('/api/traits/db', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// Update CSV scores from DB finalScores for 7 specified traits
+// POST /api/csv/update-scores  (multipart/form-data, field name: file)
+const TRAITS_TO_UPDATE = [
+  'Emotive Delight',
+  'Foresight',
+  '(FORESIGHT) Expressed Intent',
+  '(SKEPTICAL) Hopeful Skepticism',
+  'Negativity',
+  '(NOT FOR ME) Outright Rejection',
+  'Neutrality'
+];
+
+app.post('/api/csv/update-scores', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'CSV file is required (field name: file)' });
+    }
+
+    const csvText = req.file.buffer.toString('utf8');
+    const records = csvParse(csvText, { columns: true, skip_empty_lines: false, relax_quotes: true, relax_column_count: true });
+
+    if (records.length === 0) {
+      return res.status(400).json({ success: false, error: 'CSV is empty' });
+    }
+
+    const headers = Object.keys(records[0]);
+    const hunchIdColumn = headers.find(h => h.trim() === 'Hunch ID');
+    if (!hunchIdColumn) {
+      return res.status(400).json({ success: false, error: 'CSV missing "Hunch ID" column' });
+    }
+
+    // Validate trait columns exist in CSV
+    const missingTraitCols = TRAITS_TO_UPDATE.filter(t => !headers.includes(t));
+    if (missingTraitCols.length === TRAITS_TO_UPDATE.length) {
+      return res.status(400).json({ success: false, error: 'No matching trait columns found in CSV' });
+    }
+
+    // Collect unique Hunch IDs to fetch from DB in one query
+    const uniqueHunchIds = [...new Set(records.map(r => r[hunchIdColumn]).filter(Boolean))];
+    console.log(`📥 CSV rows: ${records.length} | unique Hunch IDs: ${uniqueHunchIds.length}`);
+
+    const docs = await Trait.find({ hunch_id: { $in: uniqueHunchIds } })
+      .select('hunch_id initial_reaction.genAiRecords')
+      .lean();
+
+    // Build lookup: hunch_id -> { traitTitle: finalScore }
+    const hunchScoreMap = new Map();
+    for (const doc of docs) {
+      const hunchId = doc.hunch_id;
+      if (!hunchId) continue;
+      const traitMap = {};
+      for (const rec of doc.initial_reaction?.genAiRecords || []) {
+        if (TRAITS_TO_UPDATE.includes(rec.traitTitle)) {
+          traitMap[rec.traitTitle] = rec.finalScore;
+        }
+      }
+      hunchScoreMap.set(hunchId, traitMap);
+    }
+
+    let matchedRows = 0;
+    let updatedCells = 0;
+    const unmatchedIds = [];
+
+    for (const row of records) {
+      const hunchId = row[hunchIdColumn];
+      if (!hunchId) continue;
+      const traitScores = hunchScoreMap.get(hunchId);
+      if (!traitScores) {
+        unmatchedIds.push(hunchId);
+        continue;
+      }
+      matchedRows++;
+      for (const traitTitle of TRAITS_TO_UPDATE) {
+        if (!headers.includes(traitTitle)) continue;
+        if (traitScores[traitTitle] === undefined) continue;
+        row[traitTitle] = `${traitScores[traitTitle]}*`;
+        updatedCells++;
+      }
+    }
+
+    const outputCsv = csvStringify(records, { header: true, columns: headers, quoted_string: true });
+
+    console.log(`✅ CSV update complete | matched rows: ${matchedRows}/${records.length} | updated cells: ${updatedCells}`);
+    if (unmatchedIds.length > 0) {
+      console.log(`⚠️ Unmatched: ${unmatchedIds.length} hunch IDs (sample: "${unmatchedIds[0]}")`);
+    }
+
+    const filename = `Updated_${(req.file.originalname || 'export.csv').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Matched-Rows', matchedRows);
+    res.setHeader('X-Total-Rows', records.length);
+    res.setHeader('X-Updated-Cells', updatedCells);
+    res.send(outputCsv);
+  } catch (error) {
+    console.error('Error updating CSV scores:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Accuracy summary: compare GenAI's prediction (genAiSays.score) vs
+// human-reviewed label (finalScore, post-feedback).
+// - Single project:   GET /api/accuracy/summary?project=H91
+// - Two projects:     GET /api/accuracy/summary?original=H91&updated=H92
+//   (human labels always come from `original` project; matched by hunch_id + traitTitle)
+app.get('/api/accuracy/summary', async (req, res) => {
+  try {
+    const singleProject = req.query.project;
+    const originalProject = req.query.original || singleProject;
+    const updatedProject = req.query.updated || null;
+    const format = (req.query.format || 'csv').toLowerCase();
+
+    if (!originalProject) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide ?project=H91 for single project, or ?original=H91&updated=H92 for comparison'
+      });
+    }
+
+    const TRAITS = [
+      'Emotive Delight',
+      'Foresight',
+      '(FORESIGHT) Expressed Intent',
+      '(SKEPTICAL) Hopeful Skepticism',
+      'Negativity',
+      '(NOT FOR ME) Outright Rejection',
+      'Neutrality'
+    ];
+
+    const selectFields = 'hunch_id initial_reaction.genAiRecords context_prompt.genAiRecords';
+
+    const originalDocs = await Trait.find({ project_id: originalProject }).select(selectFields).lean();
+    if (!originalDocs.length) {
+      return res.status(404).json({ success: false, error: `No documents found for project_id: ${originalProject}` });
+    }
+
+    let updatedDocsByHunch = null;
+    let updatedDocsCount = 0;
+    if (updatedProject) {
+      const updatedDocs = await Trait.find({ project_id: updatedProject }).select(selectFields).lean();
+      if (!updatedDocs.length) {
+        return res.status(404).json({ success: false, error: `No documents found for project_id: ${updatedProject}` });
+      }
+      updatedDocsCount = updatedDocs.length;
+      updatedDocsByHunch = new Map();
+      for (const d of updatedDocs) {
+        if (d.hunch_id) updatedDocsByHunch.set(d.hunch_id, d);
+      }
+    }
+
+    // Initialize per-trait counters (original + optionally updated)
+    const stats = {};
+    for (const t of TRAITS) {
+      stats[t] = {
+        // Original prompts counters (H91's genAiSays.score vs finalScore)
+        origPosMatch: 0, origPosTotal: 0, origNegMatch: 0, origNegTotal: 0,
+        // Updated prompts counters (H92's genAiSays.score vs H91's finalScore)
+        updPosMatch: 0, updPosTotal: 0, updNegMatch: 0, updNegTotal: 0,
+        // Matched records between H91 and H92 (for transparency)
+        updMatchedRecords: 0
+      };
+    }
+
+    // Build lookup from updated doc's records: hunch_id -> reactionKey -> traitTitle -> genAiSays.score
+    const buildUpdatedLookup = (doc, reactionKey) => {
+      const map = new Map();
+      for (const rec of doc?.[reactionKey]?.genAiRecords || []) {
+        if (!TRAITS.includes(rec.traitTitle)) continue;
+        const score = Number(rec?.genAiSays?.score);
+        if (Number.isFinite(score)) map.set(rec.traitTitle, score);
+      }
+      return map;
+    };
+
+    for (const origDoc of originalDocs) {
+      const updDoc = updatedDocsByHunch ? updatedDocsByHunch.get(origDoc.hunch_id) : null;
+
+      for (const reactionKey of ['initial_reaction', 'context_prompt']) {
+        const origRecords = origDoc?.[reactionKey]?.genAiRecords || [];
+        const updatedLookup = updDoc ? buildUpdatedLookup(updDoc, reactionKey) : null;
+
+        for (const rec of origRecords) {
+          if (!TRAITS.includes(rec.traitTitle)) continue;
+          const humanLabel = Number(rec.finalScore);
+          const initialGenAi = Number(rec?.genAiSays?.score);
+          if (!Number.isFinite(humanLabel) || !Number.isFinite(initialGenAi)) continue;
+
+          const s = stats[rec.traitTitle];
+
+          // Original prompts accuracy
+          if (humanLabel === 1) {
+            s.origPosTotal++;
+            if (initialGenAi === 1) s.origPosMatch++;
+          } else if (humanLabel === 0) {
+            s.origNegTotal++;
+            if (initialGenAi === 0) s.origNegMatch++;
+          }
+
+          // Updated prompts accuracy (only if updated project provided AND a match found)
+          if (updatedLookup) {
+            const updatedGenAi = updatedLookup.get(rec.traitTitle);
+            if (Number.isFinite(updatedGenAi)) {
+              s.updMatchedRecords++;
+              if (humanLabel === 1) {
+                s.updPosTotal++;
+                if (updatedGenAi === 1) s.updPosMatch++;
+              } else if (humanLabel === 0) {
+                s.updNegTotal++;
+                if (updatedGenAi === 0) s.updNegMatch++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const pct = (num, den) => den === 0 ? 'N/A' : `${Math.round((num / den) * 100)}%`;
+
+    const summary = TRAITS.map(trait => {
+      const s = stats[trait];
+      const row = {
+        Trait: trait,
+        'Original Prompts: Positive % Same as Human': pct(s.origPosMatch, s.origPosTotal),
+        'Original Prompts: Negative % Same as Human': pct(s.origNegMatch, s.origNegTotal)
+      };
+      if (updatedProject) {
+        row['Updated Prompts: Positive % Same as Human'] = pct(s.updPosMatch, s.updPosTotal);
+        row['Updated Prompts: Negative % Same as Human'] = pct(s.updNegMatch, s.updNegTotal);
+      }
+      row['Positive Matches (Original)'] = s.origPosMatch;
+      row['Positive Total (Human=1)'] = s.origPosTotal;
+      row['Negative Matches (Original)'] = s.origNegMatch;
+      row['Negative Total (Human=0)'] = s.origNegTotal;
+      if (updatedProject) {
+        row['Positive Matches (Updated)'] = s.updPosMatch;
+        row['Positive Total Matched (Updated)'] = s.updPosTotal;
+        row['Negative Matches (Updated)'] = s.updNegMatch;
+        row['Negative Total Matched (Updated)'] = s.updNegTotal;
+      }
+      return row;
+    });
+
+    console.log(`📊 Accuracy summary | original: ${originalProject} (${originalDocs.length} docs)${updatedProject ? ` | updated: ${updatedProject} (${updatedDocsCount} docs)` : ''}`);
+    for (const row of summary) {
+      const origStr = `+${row['Original Prompts: Positive % Same as Human']} -${row['Original Prompts: Negative % Same as Human']}`;
+      const updStr = updatedProject
+        ? ` | Updated: +${row['Updated Prompts: Positive % Same as Human']} -${row['Updated Prompts: Negative % Same as Human']}`
+        : '';
+      console.log(`  ${row.Trait}: Original: ${origStr}${updStr}`);
+    }
+
+    if (format === 'json') {
+      return res.json({
+        success: true,
+        originalProject,
+        updatedProject,
+        originalDocs: originalDocs.length,
+        updatedDocs: updatedDocsCount,
+        summary
+      });
+    }
+
+    const columns = ['Trait', 'Original Prompts: Positive % Same as Human', 'Original Prompts: Negative % Same as Human'];
+    if (updatedProject) {
+      columns.push('Updated Prompts: Positive % Same as Human', 'Updated Prompts: Negative % Same as Human');
+    }
+    columns.push('Positive Matches (Original)', 'Positive Total (Human=1)', 'Negative Matches (Original)', 'Negative Total (Human=0)');
+    if (updatedProject) {
+      columns.push('Positive Matches (Updated)', 'Positive Total Matched (Updated)', 'Negative Matches (Updated)', 'Negative Total Matched (Updated)');
+    }
+
+    const outputCsv = csvStringify(summary, { header: true, columns, quoted_string: true });
+
+    const filename = updatedProject
+      ? `Accuracy_Summary_${originalProject}_vs_${updatedProject}.csv`
+      : `Accuracy_Summary_${originalProject}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Original-Project', originalProject);
+    res.setHeader('X-Original-Docs', originalDocs.length);
+    if (updatedProject) {
+      res.setHeader('X-Updated-Project', updatedProject);
+      res.setHeader('X-Updated-Docs', updatedDocsCount);
+    }
+    res.send(outputCsv);
+  } catch (error) {
+    console.error('Error generating accuracy summary:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Misses report: list every record where GenAI's prediction (genAiSays.score)
+// disagrees with the human label (H91's finalScore). Useful for client to
+// review individual misses (false positives & false negatives).
+//   - Single project:  GET /api/accuracy/misses?project=H92  (compares own genAiSays vs own finalScore)
+//   - Two projects:    GET /api/accuracy/misses?original=H91&updated=H92  (uses H91 finalScore as ground truth, H92 genAiSays as prediction)
+//   - Optional filter: &missType=false_positive | false_negative
+app.get('/api/accuracy/misses', async (req, res) => {
+  try {
+    const singleProject = req.query.project;
+    const originalProject = req.query.original || singleProject;
+    const updatedProject = req.query.updated || null;
+    const missTypeFilter = (req.query.missType || '').toLowerCase();
+    const format = (req.query.format || 'csv').toLowerCase();
+
+    if (!originalProject) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide ?project=H92 (single) or ?original=H91&updated=H92 (comparison)'
+      });
+    }
+
+    const TRAITS = [
+      'Emotive Delight',
+      'Foresight',
+      '(FORESIGHT) Expressed Intent',
+      '(SKEPTICAL) Hopeful Skepticism',
+      'Negativity',
+      '(NOT FOR ME) Outright Rejection',
+      'Neutrality'
+    ];
+
+    const selectFields = 'hunch_id initial_reaction.text initial_reaction.genAiRecords context_prompt.text context_prompt.genAiRecords';
+
+    const originalDocs = await Trait.find({ project_id: originalProject }).select(selectFields).lean();
+    if (!originalDocs.length) {
+      return res.status(404).json({ success: false, error: `No documents found for project_id: ${originalProject}` });
+    }
+
+    let updatedDocsByHunch = null;
+    if (updatedProject) {
+      const updatedDocs = await Trait.find({ project_id: updatedProject }).select(selectFields).lean();
+      if (!updatedDocs.length) {
+        return res.status(404).json({ success: false, error: `No documents found for project_id: ${updatedProject}` });
+      }
+      updatedDocsByHunch = new Map();
+      for (const d of updatedDocs) {
+        if (d.hunch_id) updatedDocsByHunch.set(d.hunch_id, d);
+      }
+    }
+
+    // Build trait -> genAiSays.score map for an updated doc's reaction
+    const buildPredictionMap = (doc, reactionKey) => {
+      const map = new Map();
+      for (const rec of doc?.[reactionKey]?.genAiRecords || []) {
+        if (!TRAITS.includes(rec.traitTitle)) continue;
+        const score = Number(rec?.genAiSays?.score);
+        if (Number.isFinite(score)) map.set(rec.traitTitle, score);
+      }
+      return map;
+    };
+
+    const misses = [];
+    let totalCompared = 0;
+    let unmatchedDocs = 0;
+
+    for (const origDoc of originalDocs) {
+      const updDoc = updatedDocsByHunch ? updatedDocsByHunch.get(origDoc.hunch_id) : null;
+      if (updatedDocsByHunch && !updDoc) {
+        unmatchedDocs++;
+        continue;
+      }
+
+      for (const reactionKey of ['initial_reaction', 'context_prompt']) {
+        const reactionLabel = reactionKey === 'initial_reaction' ? 'Initial Reaction' : 'Context Prompt';
+        const reactionText = origDoc?.[reactionKey]?.text || '';
+        const origRecords = origDoc?.[reactionKey]?.genAiRecords || [];
+        const predictionMap = updDoc ? buildPredictionMap(updDoc, reactionKey) : null;
+
+        for (const rec of origRecords) {
+          if (!TRAITS.includes(rec.traitTitle)) continue;
+          const humanLabel = Number(rec.finalScore);
+          if (!Number.isFinite(humanLabel)) continue;
+
+          let genAiScore;
+          if (predictionMap) {
+            const score = predictionMap.get(rec.traitTitle);
+            if (!Number.isFinite(score)) continue;
+            genAiScore = score;
+          } else {
+            const score = Number(rec?.genAiSays?.score);
+            if (!Number.isFinite(score)) continue;
+            genAiScore = score;
+          }
+
+          totalCompared++;
+
+          if (humanLabel === genAiScore) continue; // not a miss
+
+          const missType = (humanLabel === 0 && genAiScore === 1) ? 'False Positive' : 'False Negative';
+          if (missTypeFilter === 'false_positive' && missType !== 'False Positive') continue;
+          if (missTypeFilter === 'false_negative' && missType !== 'False Negative') continue;
+
+          misses.push({
+            'Hunch ID': origDoc.hunch_id || '',
+            'Reaction Type': reactionLabel,
+            'Reaction Text': reactionText,
+            'Trait': rec.traitTitle,
+            'Human Label': humanLabel,
+            'GenAI Score': genAiScore,
+            'Miss Type': missType
+          });
+        }
+      }
+    }
+
+    // Sort: by trait, then miss type, then hunch_id (stable, easy to scan)
+    misses.sort((a, b) => {
+      if (a.Trait !== b.Trait) return a.Trait.localeCompare(b.Trait);
+      if (a['Miss Type'] !== b['Miss Type']) return a['Miss Type'].localeCompare(b['Miss Type']);
+      return String(a['Hunch ID']).localeCompare(String(b['Hunch ID']));
+    });
+
+    const fpCount = misses.filter(m => m['Miss Type'] === 'False Positive').length;
+    const fnCount = misses.filter(m => m['Miss Type'] === 'False Negative').length;
+
+    console.log(`📋 Misses report | original: ${originalProject}${updatedProject ? ` | updated: ${updatedProject}` : ''}`);
+    console.log(`   Compared: ${totalCompared} | Misses: ${misses.length} (FP: ${fpCount}, FN: ${fnCount})${unmatchedDocs ? ` | Unmatched docs: ${unmatchedDocs}` : ''}`);
+
+    if (format === 'json') {
+      return res.json({
+        success: true,
+        originalProject,
+        updatedProject,
+        totalCompared,
+        misses: misses.length,
+        falsePositives: fpCount,
+        falseNegatives: fnCount,
+        unmatchedDocs,
+        rows: misses
+      });
+    }
+
+    const columns = ['Hunch ID', 'Reaction Type', 'Reaction Text', 'Trait', 'Human Label', 'GenAI Score', 'Miss Type'];
+    const outputCsv = csvStringify(misses, { header: true, columns, quoted_string: true });
+
+    const filename = updatedProject
+      ? `Misses_${originalProject}_vs_${updatedProject}.csv`
+      : `Misses_${originalProject}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Total-Compared', totalCompared);
+    res.setHeader('X-Total-Misses', misses.length);
+    res.setHeader('X-False-Positives', fpCount);
+    res.setHeader('X-False-Negatives', fnCount);
+    res.send(outputCsv);
+  } catch (error) {
+    console.error('Error generating misses report:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
